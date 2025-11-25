@@ -54,6 +54,11 @@ class ProcessoFrame(ctk.CTkFrame):
         )
         self.btn_novo.pack(side="left", padx=5)
 
+        self.btn_editar = ctk.CTkButton(
+            button_frame, text="Editar/Ver Detalhes", command=self.editar_processo
+        )
+        self.btn_editar.pack(side="left", padx=5)
+
         self.btn_deletar = ctk.CTkButton(
             button_frame, text="Deletar Processo", command=self.deletar_processo
         )
@@ -87,29 +92,32 @@ class ProcessoFrame(ctk.CTkFrame):
         self.atualizar_lista()
 
     def atualizar_lista(self):
-        for row in self.tree.get_children():
-            self.tree.delete(row)
+        try:
+            for row in self.tree.get_children():
+                self.tree.delete(row)
 
-        for p in listar_processos(self.db):
-            self.tree.insert(
-                "",
-                "end",
-                values=(
-                    p.id,
-                    p.numero,
-                    p.autor,
-                    p.reu,
-                    p.cliente_id,
-                    p.fase,
-                    p.uf,
-                    p.comarca,
-                    p.vara,
-                    p.status,
-                    p.observacoes,
-                    p.data_abertura,
-                    p.data_fechamento,
-                ),
-            )
+            for p in listar_processos(self.db):
+                self.tree.insert(
+                    "",
+                    "end",
+                    values=(
+                        p.id,
+                        p.numero,
+                        p.autor,
+                        p.reu,
+                        p.cliente_id,
+                        p.fase,
+                        p.uf,
+                        p.comarca,
+                        p.vara,
+                        p.status,
+                        p.observacoes,
+                        p.data_abertura,
+                        p.data_fechamento,
+                    ),
+                )
+        except Exception as e:
+            messagebox.showerror("Erro ao Carregar", f"Não foi possível carregar os processos do banco de dados.\n\nErro: {e}")
 
     def pegar_processo_selecionado(self):
         sel = self.tree.selection()
@@ -122,11 +130,15 @@ class ProcessoFrame(ctk.CTkFrame):
         return None
 
     def duplo_clique(self, event):
+        self.editar_processo()
+
+    def editar_processo(self):
         processo = self.pegar_processo_selecionado()
-        if processo:
-            self.controller.trocar_frame(
-                lambda parent, ctrl: ProcessoDetalhesFrame(parent, ctrl, processo.id)
-            )
+        if not processo:
+            messagebox.showwarning("Aviso", "Selecione um processo para ver os detalhes ou editar.")
+            return
+        self.controller.trocar_frame(
+            lambda parent, ctrl: ProcessoDetalhesFrame(parent, ctrl, processo.id))
 
     def deletar_processo(self):
         processo = self.pegar_processo_selecionado()
@@ -270,3 +282,112 @@ class ProcessoDetalhesFrame(ctk.CTkFrame):
         self._build_andamentos_tab()
         self._build_tarefas_tab()
         self._build_documentos_tab()
+
+    def _build_dados_tab(self):
+        f = self.tabs.tab("Dados")
+        for w in f.winfo_children():
+            w.destroy()
+
+        ctk.CTkLabel(f, text="Dados do Processo", font=ctk.CTkFont(size=16, weight="bold")).pack(pady=5)
+        
+        # Usando um grid para melhor alinhamento
+        grid_frame = ctk.CTkFrame(f, fg_color="transparent")
+        grid_frame.pack(fill="x", padx=20, pady=10)
+
+        campos = {
+            "Número:": self.processo.numero, "Autor:": self.processo.autor,
+            "Réu:": self.processo.reu, "Status:": self.processo.status,
+            "Fase:": self.processo.fase, "UF:": self.processo.uf,
+            "Comarca:": self.processo.comarca, "Vara:": self.processo.vara,
+            "Data Abertura:": self.processo.data_abertura,
+            "Data Fechamento:": self.processo.data_fechamento
+        }
+
+        for i, (label, valor) in enumerate(campos.items()):
+            ctk.CTkLabel(grid_frame, text=label, anchor="w").grid(row=i, column=0, sticky="w", padx=5, pady=2)
+            ctk.CTkLabel(grid_frame, text=valor or "N/A", anchor="w").grid(row=i, column=1, sticky="w", padx=5, pady=2)
+
+        ctk.CTkLabel(f, text="Observações:", anchor="w").pack(fill="x", padx=20, pady=(10, 0))
+        obs_text = ctk.CTkTextbox(f, height=100)
+        obs_text.pack(fill="x", expand=True, padx=20, pady=5)
+        obs_text.insert("0.0", self.processo.observacoes or "")
+        obs_text.configure(state="disabled") # Apenas para visualização
+
+    def _build_andamentos_tab(self):
+        f = self.tabs.tab("Andamentos")
+        for w in f.winfo_children():
+            w.destroy()
+
+        topf = ctk.CTkFrame(f); topf.pack(fill="x", pady=3)
+        # Adicionar comandos aos botões depois
+        ctk.CTkButton(topf, text="Novo Andamento").pack(side="left", padx=3)
+        ctk.CTkButton(topf, text="Editar Andamento").pack(side="left", padx=3)
+        ctk.CTkButton(topf, text="Excluir Andamento").pack(side="left", padx=3)
+
+        cols = ("ID", "Data", "Tipo", "Descrição", "Criado Por")
+        self.tree_and = ttk.Treeview(f, columns=cols, show="headings")
+        for c in cols:
+            self.tree_and.heading(c, text=c)
+            self.tree_and.column(c, width=140, anchor="center")
+        self.tree_and.pack(fill="both", expand=True, pady=6)
+        self._carregar_andamentos()
+
+    def _carregar_andamentos(self):
+        for row in self.tree_and.get_children():
+            self.tree_and.delete(row)
+        for a in listar_andamentos_do_processo(self.processo_id, self.db):
+            criado_por = a.criado_por_usuario.nome if a.criado_por_usuario else ""
+            descricao = (a.descricao[:80] + "...") if len(a.descricao or "") > 80 else a.descricao
+            self.tree_and.insert("", "end", values=(a.id, a.data, a.tipo, descricao, criado_por))
+
+    def _build_tarefas_tab(self):
+        f = self.tabs.tab("Tarefas")
+        for w in f.winfo_children():
+            w.destroy()
+        topf = ctk.CTkFrame(f); topf.pack(fill="x", pady=3)
+        # Adicionar comandos aos botões depois
+        ctk.CTkButton(topf, text="Nova Tarefa").pack(side="left", padx=3)
+        ctk.CTkButton(topf, text="Editar Tarefa").pack(side="left", padx=3)
+        ctk.CTkButton(topf, text="Excluir Tarefa").pack(side="left", padx=3)
+
+        cols = ("ID", "Título", "Responsável", "Prazo", "Status")
+        self.tree_task = ttk.Treeview(f, columns=cols, show="headings")
+        for c in cols:
+            self.tree_task.heading(c, text=c)
+            self.tree_task.column(c, width=160, anchor="center")
+        self.tree_task.pack(fill="both", expand=True, pady=6)
+        self._carregar_tarefas()
+
+    def _carregar_tarefas(self):
+        for row in self.tree_task.get_children():
+            self.tree_task.delete(row)
+        for t in listar_tarefas_do_processo(self.processo_id, self.db):
+            responsavel = t.responsavel.nome if t.responsavel else ""
+            prazo = t.prazo.isoformat() if t.prazo else ""
+            self.tree_task.insert("", "end", values=(t.id, t.titulo, responsavel, prazo, t.status))
+
+    def _build_documentos_tab(self):
+        f = self.tabs.tab("Documentos")
+        for w in f.winfo_children():
+            w.destroy()
+
+        topf = ctk.CTkFrame(f); topf.pack(fill="x", pady=3)
+        # Adicionar comandos aos botões depois
+        ctk.CTkButton(topf, text="Upload").pack(side="left", padx=3)
+        ctk.CTkButton(topf, text="Excluir Anexo").pack(side="left", padx=3)
+
+        cols = ("ID", "Nome", "Criado Em", "Tamanho")
+        self.tree_doc = ttk.Treeview(f, columns=cols, show="headings")
+        for c in cols:
+            self.tree_doc.heading(c, text=c)
+            self.tree_doc.column(c, width=200, anchor="center")
+        self.tree_doc.pack(fill="both", expand=True, pady=6)
+        self._carregar_anexos()
+
+    def _carregar_anexos(self):
+        for row in self.tree_doc.get_children():
+            self.tree_doc.delete(row)
+        for a in listar_anexos_do_processo(self.processo_id, self.db):
+            criado = a.criado_em.strftime("%Y-%m-%d %H:%M")
+            tamanho = f"{a.tamanho} bytes" if a.tamanho else ""
+            self.tree_doc.insert("", "end", values=(a.id, a.nome_original or Path(a.caminho_arquivo).name, criado, tamanho))

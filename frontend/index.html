@@ -1,0 +1,201 @@
+<!doctype html>
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Gestor LS - Frontend</title>
+  <style>
+    :root { --sidebar-bg: #1f2937; --sidebar-fg: #fff; --content-bg: #f3f4f6 }
+    body { font-family: Arial, sans-serif; margin: 0; height: 100vh; }
+    .app { display: flex; height: 100vh; }
+    .sidebar { width: 220px; background: var(--sidebar-bg); color: var(--sidebar-fg); padding: 20px; box-sizing: border-box }
+    .logo { font-weight: bold; margin-bottom: 20px }
+    .menu { list-style: none; padding: 0; margin: 0 }
+    .menu a { display: block; color: var(--sidebar-fg); text-decoration: none; padding: 8px 10px; border-radius: 6px }
+    .menu a:hover { background: #374151 }
+    .menu a.active { background: #111827 }
+    .content { flex: 1; background: var(--content-bg); overflow: auto }
+    .header { padding: 14px 20px; border-bottom: 1px solid #e5e7eb; background: #fff }
+    .container { padding: 20px }
+    .card { background: #fff; border-radius: 8px; padding: 16px; margin-bottom: 12px }
+    .list-item { padding: 10px; border-bottom: 1px solid #eee }
+  </style>
+</head>
+<body>
+  <div class="app">
+    <aside class="sidebar">
+      <div class="logo">Gestão Leão e Savio</div>
+      <ul class="menu">
+        <li><a href="#dashboard" data-route="dashboard" class="menu-link">Dashboard</a></li>
+        <li><a href="#cadastros" data-route="cadastros" class="menu-link">Cadastros</a></li>
+        <li><a href="#processos" data-route="processos" class="menu-link">Processos</a></li>
+        <li><a href="#contabilidade" data-route="contabilidade" class="menu-link">Contabilidade</a></li>
+        <li><a href="#tarefas" data-route="tarefas" class="menu-link">Tarefas</a></li>
+        <li><a href="#clientes" data-route="clientes" class="menu-link">Clientes</a></li>
+        <li><a href="#config" data-route="config" class="menu-link">Configurações</a></li>
+      </ul>
+    </aside>
+    <main class="content">
+      <div class="header" id="page-title">Dashboard</div>
+      <div class="container" id="content-area">
+        <!-- dynamic content -> cards or lists -->
+        <div class="card">Bem-vindo ao Gestor LS — carregue dados nas páginas.</div>
+      </div>
+    </main>
+  </div>
+
+  <script>
+    const apiBase = '/api'
+    const content = document.getElementById('content-area')
+    const title = document.getElementById('page-title')
+
+    function navigate(route) {
+      document.querySelectorAll('.menu-link').forEach(l => l.classList.remove('active'))
+      const active = document.querySelector(`[data-route="${route}"]`)
+      if (active) active.classList.add('active')
+      title.textContent = route[0].toUpperCase() + route.slice(1)
+      if (route === 'dashboard') {
+        loadDashboard()
+      } else if (route === 'clientes') {
+        loadClientes()
+      } else if (route === 'processos') {
+        loadProcessos()
+      } else if (route === 'tarefas') {
+        loadTarefas()
+      } else if (route === 'cadastros') {
+        loadUsuarios()
+      } else if (route === 'contabilidade') {
+        loadPagamentos()
+      } else if (route === 'config') {
+        content.innerHTML = '<div class="card">Configurações do sistema — placeholder</div>'
+      }
+    }
+
+    async function loadClientes(){
+      content.innerHTML = '<div class="card">Carregando clientes...</div>'
+      try{
+        const res = await fetch(apiBase + '/clientes')
+        const data = await res.json()
+        let html = '<div class="card"><h3>Clientes</h3>'
+        if (Array.isArray(data) && data.length) {
+          html += '<div>' + data.map(c => `<div class="list-item"><strong>${c.nome}</strong> — ${c.cpf_cnpj} — ${c.telefone || ''} — ${c.email || ''}</div>`).join('') + '</div>'
+        } else {
+          html += '<div>Nenhum cliente</div>'
+        }
+        html += '</div>'
+        content.innerHTML = html
+      }catch(err){
+        content.innerHTML = '<div class="card">Erro ao carregar clientes</div>'
+      }
+    }
+
+    async function loadProcessos(){
+      content.innerHTML = '<div class="card">Carregando processos...</div>'
+      try{
+        const res = await fetch(apiBase + '/processos')
+        const data = await res.json()
+        let html = '<div class="card"><h3>Processos</h3>'
+        if (Array.isArray(data) && data.length) {
+          html += '<div>' + data.map(p => `<div class="list-item"><strong>${p.numero}</strong> — ${p.autor} — ${p.reu} — cliente ${p.cliente_id}</div>`).join('') + '</div>'
+        } else {
+          html += '<div>Nenhum processo</div>'
+        }
+        html += '</div>'
+        content.innerHTML = html
+      }catch(err){
+        content.innerHTML = '<div class="card">Erro ao carregar processos</div>'
+      }
+    }
+
+    async function loadTarefas(){
+      content.innerHTML = '<div class="card">Carregando tarefas...</div>'
+      try{
+        const res = await fetch(apiBase + '/tarefas')
+        const data = await res.json()
+        let html = '<div class="card"><h3>Tarefas</h3>'
+        if (Array.isArray(data) && data.length) {
+          html += '<div>' + data.map(t => `<div class="list-item"><strong>${t.titulo}</strong> — ${t.responsavel_id || ''} — ${t.prazo || ''} — ${t.status || ''}</div>`).join('') + '</div>'
+        } else {
+          html += '<div>Nenhuma tarefa</div>'
+        }
+        html += '</div>'
+        content.innerHTML = html
+      }catch(err){
+        content.innerHTML = '<div class="card">Erro ao carregar tarefas</div>'
+      }
+    }
+
+    async function loadUsuarios(){
+      content.innerHTML = '<div class="card">Carregando usuários...</div>'
+      try{
+        const res = await fetch(apiBase + '/usuarios')
+        const data = await res.json()
+        let html = '<div class="card"><h3>Usuários</h3>'
+        if (Array.isArray(data) && data.length) {
+          html += '<div>' + data.map(u => `<div class="list-item"><strong>${u.nome}</strong> — ${u.login} — ${u.email || ''} — ${u.perfil}</div>`).join('') + '</div>'
+        } else {
+          html += '<div>Nenhum usuário</div>'
+        }
+        html += '</div>'
+        content.innerHTML = html
+      }catch(err){
+        content.innerHTML = '<div class="card">Erro ao carregar usuários</div>'
+      }
+    }
+
+    async function loadPagamentos(){
+      content.innerHTML = '<div class="card">Carregando pagamentos...</div>'
+      try{
+        const res = await fetch(apiBase + '/pagamentos')
+        const data = await res.json()
+        let html = '<div class="card"><h3>Pagamentos</h3>'
+        if (Array.isArray(data) && data.length) {
+          html += '<div>' + data.map(p => `<div class="list-item"><strong>${p.descricao || ''}</strong> — R$ ${p.valor} — ${p.tipo || ''} — ${p.data_pagamento || ''}</div>`).join('') + '</div>'
+        } else {
+          html += '<div>Nenhum pagamento</div>'
+        }
+        html += '</div>'
+        content.innerHTML = html
+      }catch(err){
+        content.innerHTML = '<div class="card">Erro ao carregar pagamentos</div>'
+      }
+    }
+
+    async function loadDashboard(){
+      content.innerHTML = '<div class="card">Carregando dashboard...</div>'
+      try{
+        const [clientes, processos, tarefas, pagamentos] = await Promise.all([
+          fetch(apiBase + '/clientes').then(r => r.json()).catch(()=>[]),
+          fetch(apiBase + '/processos').then(r => r.json()).catch(()=>[]),
+          fetch(apiBase + '/tarefas').then(r => r.json()).catch(()=>[]),
+          fetch(apiBase + '/pagamentos').then(r => r.json()).catch(()=>[]),
+        ])
+        const html = `
+          <div class="card"><h3>Dashboard</h3>
+            <div class="list-item">Clientes: ${Array.isArray(clientes) ? clientes.length : 0}</div>
+            <div class="list-item">Processos: ${Array.isArray(processos) ? processos.length : 0}</div>
+            <div class="list-item">Tarefas: ${Array.isArray(tarefas) ? tarefas.length : 0}</div>
+            <div class="list-item">Pagamentos: ${Array.isArray(pagamentos) ? pagamentos.length : 0}</div>
+          </div>`
+        content.innerHTML = html
+      }catch(err){
+        content.innerHTML = '<div class="card">Erro ao carregar dashboard</div>'
+      }
+    }
+
+    document.querySelectorAll('.menu-link').forEach(link => {
+      link.addEventListener('click', (e) => {
+        e.preventDefault()
+        const route = link.getAttribute('data-route')
+        navigate(route)
+        location.hash = route
+      })
+    })
+
+    // On load, route by hash or default to dashboard
+    const route = location.hash ? location.hash.slice(1) : 'dashboard'
+    navigate(route)
+  </script>
+</body>
+</html>

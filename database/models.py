@@ -75,12 +75,14 @@ class Andamento(Base):
 
     id = Column(Integer, primary_key=True)
     processo_id = Column(Integer, ForeignKey("processos.id"))
-    data = Column(Date, default=datetime.utcnow)
-    tipo = Column(String(80))
-    descricao = Column(Text, nullable=False)
+    tipo_andamento_id = Column(Integer, ForeignKey("tipos_andamento.id"), nullable=False)
+    data = Column(Date, default=datetime.utcnow, nullable=False)
+    descricao_complementar = Column(Text, nullable=True) # Para notas adicionais do usuário
     criado_por = Column(Integer, ForeignKey("usuarios.id"), nullable=True)
     criado_em = Column(DateTime, default=datetime.utcnow)
+    
     processo = relationship("Processo", back_populates="andamentos")
+    tipo_andamento = relationship("TipoAndamento")
     criado_por_usuario = relationship("Usuario", back_populates="andamentos")
     anexos = relationship("Anexo", back_populates="andamento", cascade="all, delete-orphan")
 
@@ -89,14 +91,16 @@ class Tarefa(Base):
 
     id = Column(Integer, primary_key=True)
     processo_id = Column(Integer, ForeignKey("processos.id"))
-    titulo = Column(String(250), nullable=False)
-    descricao = Column(Text, nullable=True)
+    tipo_tarefa_id = Column(Integer, ForeignKey("tipos_tarefa.id"), nullable=False)
+    descricao_complementar = Column(Text, nullable=True) # Para notas adicionais do usuário
     prazo = Column(Date, nullable=True)
     responsavel_id = Column(Integer, ForeignKey("usuarios.id"), nullable=True)
     status = Column(String(40), default="pendente")
     criado_em = Column(DateTime, default=datetime.utcnow)
     atualizado_em = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    
     processo = relationship("Processo", back_populates="tarefas")
+    tipo_tarefa = relationship("TipoTarefa")
     responsavel = relationship("Usuario", back_populates="tarefas")
 
 class Anexo(Base):
@@ -105,7 +109,7 @@ class Anexo(Base):
     id = Column(Integer, primary_key=True)
     processo_id = Column(Integer, ForeignKey("processos.id"), nullable=True)
     andamento_id = Column(Integer, ForeignKey("andamentos.id"), nullable=True)
-    nome_original = Column(String(255))
+    nome_arquivo = Column(String(255)) # Renomeado para consistência
     caminho_arquivo = Column(String(500), nullable=False)
     mime = Column(String(100))
     tamanho = Column(Integer)
@@ -114,3 +118,17 @@ class Anexo(Base):
     processo = relationship("Processo", back_populates="anexos")
     andamento = relationship("Andamento", back_populates="anexos")
     criado_por_usuario = relationship("Usuario", back_populates="anexos")
+
+class TipoAndamento(Base):
+    __tablename__ = "tipos_andamento"
+
+    id = Column(Integer, primary_key=True)
+    nome = Column(String(150), unique=True, nullable=False)
+    descricao_padrao = Column(Text, nullable=True)
+
+class TipoTarefa(Base):
+    __tablename__ = "tipos_tarefa"
+
+    id = Column(Integer, primary_key=True)
+    nome = Column(String(150), unique=True, nullable=False)
+    descricao_padrao = Column(Text, nullable=True)

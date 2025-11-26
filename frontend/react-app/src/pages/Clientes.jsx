@@ -1,21 +1,22 @@
-import React, { useEffect, useState } from 'react'
+import React, { useEffect, useState, useCallback } from 'react'
 import Header from '../components/Header'
 
 export default function Clientes() {
   const [clientes, setClientes] = useState([])
   const apiBase = '/api'
 
-  async function load() {
+  const load = useCallback(async () => {
     try {
-      const res = await fetch(`${apiBase}/clientes`)
-      const json = await res.json()
-      setClientes(json)
+      const res = await fetch(`${apiBase}/clientes`);
+      if (!res.ok) throw new Error(`Erro na API: ${res.status}`);
+      const json = await res.json();
+      setClientes(json);
     } catch (err) {
-      console.error(err)
+      console.error(err);
     }
-  }
+  }, []); // useCallback com array de dependências vazio
 
-  useEffect(() => { load() }, [])
+  useEffect(() => { load() }, [load])
 
   return (
     <div style={{ padding: 20 }}>

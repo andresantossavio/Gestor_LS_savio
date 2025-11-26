@@ -1,19 +1,20 @@
-import React, { useEffect, useState } from 'react'
+import React, { useEffect, useState, useCallback } from 'react'
 import Header from '../components/Header'
 
 export default function Contabilidade(){
   const [pagamentos, setPagamentos] = useState([])
   const apiBase = '/api'
 
-  async function load(){
-    try{
-      const resp = await fetch(`${apiBase}/pagamentos`)
-      const json = await resp.json()
-      setPagamentos(json)
-    }catch(err){ console.error(err) }
-  }
+  const load = useCallback(async () => {
+    try {
+      const resp = await fetch(`${apiBase}/pagamentos`);
+      if (!resp.ok) throw new Error(`Erro na API: ${resp.status}`);
+      const json = await resp.json();
+      setPagamentos(json);
+    } catch (err) { console.error(err) }
+  }, []);
 
-  useEffect(()=>{ load() }, [])
+  useEffect(() => { load() }, [load])
 
   return (
     <div style={{ padding: 20 }}>

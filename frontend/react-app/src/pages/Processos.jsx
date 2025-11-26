@@ -1,28 +1,29 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useCallback } from 'react';
 import Header from '../components/Header';
 
 export default function Processos() {
   const [processos, setProcessos] = useState([]);
   const apiBase = '/api';
 
-  useEffect(() => {
-    // Mova a função 'load' para dentro do useEffect
-    async function load() {
-      try {
-        const res = await fetch(`${apiBase}/processos`);
-        const json = await res.json();
-        setProcessos(json);
-      } catch (err) {
-        console.error(err);
-      }
+  const load = useCallback(async () => {
+    try {
+      const res = await fetch(`${apiBase}/processos`);
+      if (!res.ok) throw new Error(`Erro na API: ${res.status}`);
+      const json = await res.json();
+      setProcessos(json);
+    } catch (err) {
+      console.error(err);
     }
-    
+  }, []);
+
+  useEffect(() => {
     load();
-  }, []); // O array de dependências vazio garante que isso rode apenas uma vez
+  }, [load]);
 
   return (
     <div style={{ padding: 20 }}>
       <Header title="Processos" />
+      <button onClick={load}>Carregar Processos</button>
       <div style={{ marginTop: 20 }}>
         {processos.length === 0 && <div>Nenhum processo</div>}
         {processos.length > 0 && (

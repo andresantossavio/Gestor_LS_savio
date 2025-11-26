@@ -1,44 +1,49 @@
-from database.models import Usuario
 from sqlalchemy.orm import Session
-import hashlib
+from . import models
 
+# Futuramente, para segurança, a senha deve ser "hasheada"
+# from passlib.context import CryptContext
+# pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
-def criar_usuario(db: Session, nome, email, login, senha, perfil):
-    usuario = Usuario(
-        nome=nome,
-        email=email,
-        login=login,
-        senha=hashlib.sha256(senha.encode()).hexdigest(),
-        perfil=perfil
-    )
-    db.add(usuario)
-    db.commit()
-    db.refresh(usuario)
-    return usuario
+def buscar_usuario(db: Session, usuario_id: int):
+    """Busca um usuário pelo ID."""
+    return db.query(models.Usuario).filter(models.Usuario.id == usuario_id).first()
 
+def buscar_usuario_por_login(db: Session, login: str):
+    """Busca um usuário pelo login."""
+    return db.query(models.Usuario).filter(models.Usuario.login == login).first()
 
 def listar_usuarios(db: Session):
-    return db.query(Usuario).all()
+    """Lista todos os usuários."""
+    return db.query(models.Usuario).all()
 
+def criar_usuario(db: Session, **kwargs):
+    """Cria um novo usuário."""
+    # hashed_password = pwd_context.hash(senha) # Exemplo de como hashear a senha
+    # A função agora recebe todos os dados em kwargs e os passa diretamente para o modelo
+    db_usuario = models.Usuario(**kwargs)
+    db.add(db_usuario)
+    db.commit()
+    db.refresh(db_usuario)
+    return db_usuario
 
-def atualizar_usuario(db: Session, usuario_id: int, **kwargs):
-    usuario = db.query(Usuario).filter(Usuario.id == usuario_id).first()
-    if usuario:
-        for key, value in kwargs.items():
-            if key == "senha" and value:
-                # Criptografa a senha apenas se uma nova for fornecida
-                setattr(usuario, key, hashlib.sha256(value.encode()).hexdigest())
-            elif hasattr(usuario, key):
-                setattr(usuario, key, value)
+def atualizar_usuario(db: Session, usuario_id: int, dados_usuario: dict):
+    """Atualiza os dados de um usuário."""
+    db_usuario = buscar_usuario(db, usuario_id)
+    if not db_usuario:
+        return None
+    
+    for key, value in dados_usuario.items():
+        setattr(db_usuario, key, value)
+    
+    db.commit()
+    db.refresh(db_usuario)
+    return db_usuario
+
+def deletar_usuario(db: Session, usuario_id: int):
+    """Deleta um usuário."""
+    db_usuario = buscar_usuario(db, usuario_id)
+    if db_usuario:
+        db.delete(db_usuario)
         db.commit()
-        db.refresh(usuario)
-    return usuario
-
-
-def excluir_usuario(db: Session, usuario_id: int):
-    usuario = db.query(Usuario).filter(Usuario.id == usuario_id).first()
-    if usuario:
-        db.delete(usuario)
-        db.commit()
-        return True
-    return False
+    return db_usuario

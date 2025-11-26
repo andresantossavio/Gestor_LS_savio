@@ -1,16 +1,15 @@
 from database.models import Tarefa
 from sqlalchemy.orm import Session
 from datetime import datetime, date
-
-
-def criar_tarefa(titulo: str, db: Session, descricao: str = None, prazo: date = None,
-                 responsavel_id: int = None, processo_id: int = None, status: str = "pendente"):
+ 
+def criar_tarefa(db: Session, processo_id: int, tipo_tarefa_id: int, descricao_complementar: str | None = None, prazo: date | None = None, responsavel_id: int | None = None, status: str = "pendente"):
+    """Cria uma nova tarefa no banco de dados."""
     t = Tarefa(
-        titulo=titulo,
-        descricao=descricao,
+        processo_id=processo_id,
+        tipo_tarefa_id=tipo_tarefa_id,
+        descricao_complementar=descricao_complementar,
         prazo=prazo,
         responsavel_id=responsavel_id,
-        processo_id=processo_id,
         status=status,
         criado_em=datetime.utcnow(),
         atualizado_em=datetime.utcnow()
@@ -19,7 +18,10 @@ def criar_tarefa(titulo: str, db: Session, descricao: str = None, prazo: date = 
     db.commit()
     db.refresh(t)
     return t
-
+ 
+def listar_tarefas(db: Session):
+    """Lista todas as tarefas (usado pela API principal)."""
+    return db.query(Tarefa).all()
 
 def listar_tarefas_do_processo(processo_id: int, db: Session):
     return db.query(Tarefa).filter(Tarefa.processo_id == processo_id).order_by(Tarefa.prazo).all()

@@ -1,21 +1,22 @@
-import React, { useEffect, useState } from 'react'
+import React, { useEffect, useState, useCallback } from 'react'
 import Header from '../components/Header'
 
 export default function Tarefas() {
   const [tarefas, setTarefas] = useState([])
   const apiBase = '/api'
 
-  async function load() {
+  const load = useCallback(async () => {
     try {
-      const res = await fetch(`${apiBase}/tarefas`)
-      const json = await res.json()
-      setTarefas(json)
+      const res = await fetch(`${apiBase}/tarefas`);
+      if (!res.ok) throw new Error(`Erro na API: ${res.status}`);
+      const json = await res.json();
+      setTarefas(json);
     } catch (err) {
-      console.error(err)
+      console.error(err);
     }
-  }
+  }, []); // useCallback com array de dependências vazio
 
-  useEffect(() => { load() }, [])
+  useEffect(() => { load() }, [load])
 
   return (
     <div style={{ padding: 20 }}>
@@ -25,7 +26,7 @@ export default function Tarefas() {
         {tarefas.length === 0 && <div>Nenhuma tarefa</div>}
         {tarefas.map(t => (
           <div key={t.id} style={{ borderBottom: '1px solid #ddd', padding: 10 }}>
-            <strong>{t.titulo}</strong> — {t.responsavel_id || ''} — {t.prazo || ''}
+            <strong>Tipo ID: {t.tipo_tarefa_id}</strong> — {t.descricao_complementar || 'Sem descrição'} — Prazo: {t.prazo || 'N/A'}
           </div>
         ))}
       </div>

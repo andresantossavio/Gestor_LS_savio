@@ -6,6 +6,7 @@ import Dashboard from './pages/Dashboard';
 import Processos from './pages/Processos';
 import Cadastros from './pages/Cadastros';
 import Usuarios from './pages/Usuarios';
+import Contabilidade from './pages/Contabilidade'; // 1. Importar o novo componente
 
 import './App.css'; // Você pode criar este arquivo para estilização
 
@@ -20,6 +21,7 @@ function App() {
             <li style={{ marginBottom: '10px' }}><Link to="/processos">Processos</Link></li>
             <li style={{ marginBottom: '10px' }}><Link to="/cadastros">Cadastros</Link></li>
             <li style={{ marginBottom: '10px' }}><Link to="/usuarios">Usuários</Link></li>
+            <li style={{ marginBottom: '10px' }}><Link to="/contabilidade">Contabilidade</Link></li> {/* 2. Adicionar o link no menu */}
           </ul>
         </nav>
         <main className="content" style={{ flex: 1, padding: '20px' }}>
@@ -29,6 +31,7 @@ function App() {
             <Route path="/processos" element={<Processos />} />
             <Route path="/cadastros" element={<Cadastros />} />
             <Route path="/usuarios" element={<Usuarios />} />
+            <Route path="/contabilidade" element={<Contabilidade />} /> {/* 3. Adicionar a rota */}
             
             {/* Rota para página não encontrada */}
             <Route path="*" element={<h1>404: Página Não Encontrada</h1>} />

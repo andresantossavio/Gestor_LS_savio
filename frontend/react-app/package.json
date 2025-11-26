@@ -3,9 +3,9 @@
   "version": "0.0.0",
   "private": true,
   "scripts": {
-    "dev:frontend": "vite",
-    "dev:backend": "cd ../.. && .\\.venv\\Scripts\\python.exe main.py",
-    "dev": "concurrently \"npm:dev:backend\" \"npm:dev:frontend\"",
+    "dev:frontend": "vite --port 3000",
+    "dev:backend": "cd ../.. && .\\.venv\\Scripts\\uvicorn.exe main:app --reload",
+    "dev": "concurrently \"npm:dev:frontend\" \"npm:dev:backend\"",
     "build": "vite build --outDir ../dist",
     "preview": "vite preview --port 3000"
   },
@@ -15,7 +15,8 @@
     "react-router-dom": "6.12.1"
   },
   "devDependencies": {
-    "@vitejs/plugin-react": "^5.1.1",
+    "@vitejs/plugin-react": "^4.2.1",
+    "concurrently": "^8.2.2",
     "vite": "5.0.0"
   }
 }

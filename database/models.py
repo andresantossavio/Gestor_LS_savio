@@ -10,7 +10,6 @@ from sqlalchemy import (
     Text
 )
 from sqlalchemy.orm import relationship
-from sqlalchemy.orm import relationship
 from database.database import Base
 from datetime import datetime
 
@@ -26,6 +25,7 @@ class Usuario(Base):
     perfil = Column(String(50), default="Administrador")
     tarefas = relationship("Tarefa", back_populates="responsavel")
     andamentos = relationship("Andamento", back_populates="criado_por_usuario")
+    anexos = relationship("Anexo", back_populates="criado_por_usuario")
 
 class Cliente(Base):
     __tablename__ = "clientes"
@@ -35,7 +35,7 @@ class Cliente(Base):
     cpf_cnpj = Column(String, unique=True, nullable=False)
     telefone = Column(String)
     email = Column(String)
-    processos = relationship("Processo", back_populates="cliente")
+    processos = relationship("Processo", back_populates="cliente", cascade="all, delete-orphan")
 
 class Processo(Base):
     __tablename__ = "processos"
@@ -57,6 +57,7 @@ class Processo(Base):
     andamentos = relationship("Andamento", back_populates="processo", cascade="all, delete-orphan")
     tarefas = relationship("Tarefa", back_populates="processo", cascade="all, delete-orphan")
     anexos = relationship("Anexo", back_populates="processo", cascade="all, delete-orphan")
+    pagamentos = relationship("Pagamento", back_populates="processo", cascade="all, delete-orphan")
 
 class Pagamento(Base):
     __tablename__ = "pagamentos"
@@ -67,27 +68,27 @@ class Pagamento(Base):
     data_pagamento = Column(Date)
     tipo = Column(String)
     processo_id = Column(Integer, ForeignKey("processos.id"))
-    processo = relationship("Processo")
+    processo = relationship("Processo", back_populates="pagamentos")
 
 class Andamento(Base):
     __tablename__ = "andamentos"
 
     id = Column(Integer, primary_key=True)
-    processo_id = Column(Integer, ForeignKey("processos.id"), nullable=False)
+    processo_id = Column(Integer, ForeignKey("processos.id"))
     data = Column(Date, default=datetime.utcnow)
     tipo = Column(String(80))
     descricao = Column(Text, nullable=False)
     criado_por = Column(Integer, ForeignKey("usuarios.id"), nullable=True)
     criado_em = Column(DateTime, default=datetime.utcnow)
     processo = relationship("Processo", back_populates="andamentos")
-    criado_por_usuario = relationship("Usuario")
+    criado_por_usuario = relationship("Usuario", back_populates="andamentos")
     anexos = relationship("Anexo", back_populates="andamento", cascade="all, delete-orphan")
 
 class Tarefa(Base):
     __tablename__ = "tarefas"
 
     id = Column(Integer, primary_key=True)
-    processo_id = Column(Integer, ForeignKey("processos.id"), nullable=False)
+    processo_id = Column(Integer, ForeignKey("processos.id"))
     titulo = Column(String(250), nullable=False)
     descricao = Column(Text, nullable=True)
     prazo = Column(Date, nullable=True)
@@ -96,7 +97,7 @@ class Tarefa(Base):
     criado_em = Column(DateTime, default=datetime.utcnow)
     atualizado_em = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
     processo = relationship("Processo", back_populates="tarefas")
-    responsavel = relationship("Usuario")
+    responsavel = relationship("Usuario", back_populates="tarefas")
 
 class Anexo(Base):
     __tablename__ = "anexos"
@@ -112,3 +113,4 @@ class Anexo(Base):
     criado_em = Column(DateTime, default=datetime.utcnow)
     processo = relationship("Processo", back_populates="anexos")
     andamento = relationship("Andamento", back_populates="anexos")
+    criado_por_usuario = relationship("Usuario", back_populates="anexos")

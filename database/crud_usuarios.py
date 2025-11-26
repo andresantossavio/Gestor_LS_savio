@@ -8,7 +8,7 @@ def criar_usuario(db: Session, nome, email, login, senha, perfil):
         nome=nome,
         email=email,
         login=login,
-        senha=senha,
+        senha=hashlib.sha256(senha.encode()).hexdigest(),
         perfil=perfil
     )
     db.add(usuario)

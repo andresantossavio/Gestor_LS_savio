@@ -3,7 +3,9 @@
   "version": "0.0.0",
   "private": true,
   "scripts": {
-    "dev": "vite",
+    "dev:frontend": "vite",
+    "dev:backend": "cd ../.. && .\\.venv\\Scripts\\python.exe main.py",
+    "dev": "concurrently \"npm:dev:backend\" \"npm:dev:frontend\"",
     "build": "vite build --outDir ../dist",
     "preview": "vite preview --port 3000"
   },

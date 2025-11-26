@@ -1,12 +1,8 @@
 from sqlalchemy.orm import Session
-from database.database import SessionLocal
 from database.models import Cliente
 
-def criar_cliente(nome, cpf_cnpj, telefone, email, db: Session | None = None):
-    created_local_db = False
-    if db is None:
-        db = SessionLocal()
-        created_local_db = True
+
+def criar_cliente(nome: str, cpf_cnpj: str, telefone: str, email: str, db: Session):
     cliente = Cliente(
         nome=nome,
         cpf_cnpj=cpf_cnpj,
@@ -16,46 +12,31 @@ def criar_cliente(nome, cpf_cnpj, telefone, email, db: Session | None = None):
     db.add(cliente)
     db.commit()
     db.refresh(cliente)
-    if created_local_db:
-        db.close()
     return cliente
 
-def listar_clientes(db: Session | None = None):
-    created_local_db = False
-    if db is None:
-        db = SessionLocal()
-        created_local_db = True
-    result = db.query(Cliente).all()
-    if created_local_db:
-        db.close()
-    return result
 
-def atualizar_cliente(id, nome, cpf_cnpj, telefone, email, db: Session | None = None):
-    created_local_db = False
-    if db is None:
-        db = SessionLocal()
-        created_local_db = True
-    cliente = db.query(Cliente).filter_by(id=id).first()
+def listar_clientes(db: Session):
+    return db.query(Cliente).order_by(Cliente.nome).all()
+
+
+def buscar_cliente_por_id(cliente_id: int, db: Session):
+    return db.query(Cliente).filter(Cliente.id == cliente_id).first()
+
+
+def atualizar_cliente(cliente_id: int, db: Session, **kwargs):
+    cliente = db.query(Cliente).filter(Cliente.id == cliente_id).first()
     if cliente:
-        cliente.nome = nome
-        cliente.cpf_cnpj = cpf_cnpj
-        cliente.telefone = telefone
-        cliente.email = email
+        for key, value in kwargs.items():
+            setattr(cliente, key, value)
         db.commit()
         db.refresh(cliente)
-    if created_local_db:
-        db.close()
     return cliente
 
-def deletar_cliente(id, db: Session | None = None):
-    created_local_db = False
-    if db is None:
-        db = SessionLocal()
-        created_local_db = True
-    cliente = db.query(Cliente).filter_by(id=id).first()
+
+def deletar_cliente(cliente_id: int, db: Session):
+    cliente = db.query(Cliente).filter(Cliente.id == cliente_id).first()
     if cliente:
         db.delete(cliente)
         db.commit()
-    if created_local_db:
-        db.close()
-    
+        return True
+    return False

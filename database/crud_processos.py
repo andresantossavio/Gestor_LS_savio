@@ -1,64 +1,39 @@
 from sqlalchemy.orm import Session
-from database.models import Processo
+from . import models
 
-
-def criar_processo(
-    numero,
-    autor,
-    reu,
-    fase,
-    uf,
-    comarca,
-    vara,
-    status,
-    observacoes,
-    data_abertura,
-    data_fechamento,
-    cliente_id,
-    db: Session,
-):
-    novo = Processo(
-        numero=numero,
-        autor=autor,
-        reu=reu,
-        fase=fase,
-        uf=uf,
-        comarca=comarca,
-        vara=vara,
-        status=status,
-        observacoes=observacoes,
-        data_abertura=data_abertura,
-        data_fechamento=data_fechamento,
-        cliente_id=cliente_id,
-    )
-    db.add(novo)
-    db.commit()
-    db.refresh(novo)
-    return novo
-
+def buscar_processo(db: Session, processo_id: int):
+    """Busca um processo pelo ID."""
+    return db.query(models.Processo).filter(models.Processo.id == processo_id).first()
 
 def listar_processos(db: Session):
-    return db.query(Processo).order_by(Processo.id.desc()).all()
+    """Lista todos os processos."""
+    return db.query(models.Processo).all()
 
+def criar_processo(db: Session, **kwargs):
+    """Cria um novo processo."""
+    db_processo = models.Processo(**kwargs)
+    db.add(db_processo)
+    db.commit()
+    db.refresh(db_processo)
+    return db_processo
 
-def buscar_processo_por_id(processo_id: int, db: Session):
-    return db.query(Processo).filter(Processo.id == processo_id).first()
+def atualizar_processo(db: Session, processo_id: int, dados_processo: dict):
+    """Atualiza os dados de um processo."""
+    db_processo = buscar_processo(db, processo_id)
+    if not db_processo:
+        return None
+    
+    for key, value in dados_processo.items():
+        setattr(db_processo, key, value)
+    
+    db.commit()
+    db.refresh(db_processo)
+    return db_processo
 
-
-def atualizar_processo(processo_id: int, db: Session, **kwargs):
-    processo = db.query(Processo).filter(Processo.id == processo_id).first()
-    if processo:
-        for key, value in kwargs.items():
-            setattr(processo, key, value)
+def deletar_processo(db: Session, processo_id: int):
+    """Deleta um processo."""
+    db_processo = buscar_processo(db, processo_id)
+    if db_processo:
+        db.delete(db_processo)
         db.commit()
-        db.refresh(processo)
-    return processo
-
-
-def deletar_processo(processo_id: int, db: Session):
-    processo = db.query(Processo).filter(Processo.id == processo_id).first()
-    if processo:
-        db.delete(processo)
-        db.commit()
-        return True
-    return False
+    return db_processo

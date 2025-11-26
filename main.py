@@ -22,6 +22,9 @@ class ProcessoSchema(BaseModel):
     numero: str | None = None
     autor: str | None = None
     reu: str | None = None
+    uf: str | None = None
+    comarca: str | None = None
+    vara: str | None = None
     fase: str | None = None
     status: str | None = None
     data_abertura: str | None = None
@@ -73,6 +76,19 @@ class TarefaSchema(BaseModel):
     prazo: str | None = None
 
     model_config = ConfigDict(from_attributes=True)
+
+class ProcessoCreateSchema(BaseModel):
+    numero: str | None = None
+    autor: str | None = None
+    reu: str | None = None
+    uf: str | None = None
+    comarca: str | None = None
+    vara: str | None = None
+    fase: str | None = None
+    status: str | None = None
+    data_abertura: str | None = None
+    cliente_id: int | None = None
+    observacoes: str | None = None
 
 class UsuarioSchema(BaseModel):
     id: int
@@ -138,6 +154,29 @@ def api_listar_processos(db: Session = Depends(get_db)):
     """Endpoint da API para listar todos os processos."""
     processos = crud_processos.listar_processos(db)
     return processos
+
+@app.post("/api/processos", response_model=ProcessoSchema, status_code=201)
+def api_criar_processo(processo: ProcessoCreateSchema, db: Session = Depends(get_db)):
+    """Endpoint para criar um novo processo."""
+    return crud_processos.criar_processo(db=db, **processo.model_dump())
+
+@app.get("/api/processos/{processo_id}", response_model=ProcessoSchema)
+def api_buscar_processo(processo_id: int, db: Session = Depends(get_db)):
+    """Endpoint para buscar um processo específico."""
+    db_processo = crud_processos.buscar_processo(db, processo_id=processo_id)
+    if db_processo is None:
+        raise HTTPException(status_code=404, detail="Processo não encontrado")
+    return db_processo
+
+@app.put("/api/processos/{processo_id}", response_model=ProcessoSchema)
+def api_atualizar_processo(processo_id: int, processo: ProcessoCreateSchema, db: Session = Depends(get_db)):
+    """Endpoint para atualizar um processo."""
+    return crud_processos.atualizar_processo(db=db, processo_id=processo_id, dados_processo=processo.model_dump(exclude_unset=True))
+
+@app.delete("/api/processos/{processo_id}", status_code=204)
+def api_deletar_processo(processo_id: int, db: Session = Depends(get_db)):
+    crud_processos.deletar_processo(db=db, processo_id=processo_id)
+    return {"ok": True}
 
 @app.get("/api/usuarios", response_model=List[UsuarioSchema])
 def api_listar_usuarios(db: Session = Depends(get_db)):

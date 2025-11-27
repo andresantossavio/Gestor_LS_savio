@@ -100,6 +100,12 @@ class EsferaJusticaEnum(str, Enum):
     MILITAR = "Justiça Militar"
     ELEITORAL = "Justiça Eleitoral"
 
+# Schema simplificado para evitar referência circular
+class ClienteInProcessoSchema(BaseModel):
+    id: int
+    nome: str
+    model_config = ConfigDict(from_attributes=True)
+
 class ProcessoSchema(BaseModel):
     id: int
     numero: str | None = None
@@ -116,7 +122,11 @@ class ProcessoSchema(BaseModel):
     classe: str | None = None
     sub_classe: str | None = None
     status: str | None = None
+    cliente: ClienteInProcessoSchema | None = None # Corrigido para usar o schema simplificado
+    cliente_id: int | None = None
     data_abertura: str | None = None
+    data_fechamento: str | None = None # Campo adicionado
+    observacoes: str | None = None # Campo adicionado
 
     # Configuração para permitir que o Pydantic leia dados de objetos SQLAlchemy
     model_config = ConfigDict(from_attributes=True)
@@ -142,7 +152,11 @@ class ClienteSchema(BaseModel):
     uf: str | None = None
     cep: str | None = None
 
-    model_config = ConfigDict(from_attributes=True)
+    model_config = ConfigDict(
+        from_attributes=True,
+        # Evita que a relação 'processos' seja incluída na serialização, prevenindo erros de referência circular ou de dados.
+        exclude={'processos'}
+    )
 
 class ClienteCreateSchema(BaseModel):
     nome: str
@@ -353,14 +367,14 @@ def api_criar_processo(processo: ProcessoCreateSchema, db: Session = Depends(get
 
 @app.get("/api/processos/{processo_id}", response_model=ProcessoSchema)
 def api_buscar_processo(processo_id: int, db: Session = Depends(get_db)):
-    """Endpoint para buscar um processo específico."""
+    """Endpoint para buscar um processo específico pelo ID."""
     db_processo = crud_processos.buscar_processo(db, processo_id=processo_id)
     if db_processo is None:
         raise HTTPException(status_code=404, detail="Processo não encontrado")
     return db_processo
 
 @app.put("/api/processos/{processo_id}", response_model=ProcessoSchema)
-def api_atualizar_processo(processo_id: int, processo: ProcessoCreateSchema, db: Session = Depends(get_db)):
+def api_atualizar_processo(processo_id: int, processo: ProcessoCreateSchema, db: Session = Depends(get_db)): # O schema aqui está para a entrada de dados
     """Endpoint para atualizar um processo."""
     return crud_processos.atualizar_processo(db=db, processo_id=processo_id, dados_processo=processo.model_dump(exclude_unset=True))
 
@@ -424,7 +438,7 @@ def api_buscar_cliente(cliente_id: int, db: Session = Depends(get_db)):
 @app.put("/api/clientes/{cliente_id}", response_model=ClienteSchema)
 def api_atualizar_cliente(cliente_id: int, cliente: ClienteUpdateSchema, db: Session = Depends(get_db)):
     """Endpoint para atualizar um cliente."""
-    return crud_clientes.atualizar_cliente(db=db, cliente_id=cliente_id, dados_cliente=cliente.model_dump(exclude_unset=True))
+    return crud_clientes.atualizar_cliente(db=db, cliente_id=cliente_id, **cliente.model_dump(exclude_unset=True))
 
 @app.delete("/api/clientes/{cliente_id}", status_code=204)
 def api_deletar_cliente(cliente_id: int, db: Session = Depends(get_db)):

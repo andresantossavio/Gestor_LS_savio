@@ -1,5 +1,6 @@
 import React, { useEffect, useState, useCallback } from 'react';
 import Header from '../components/Header';
+import { Link } from 'react-router-dom';
 
 const apiBase = '/api';
 
@@ -149,11 +150,22 @@ function ProcessoForm({ processoParaEditar, onFormSubmit, onCancel }) {
     const url = isEditing ? `${apiBase}/processos/${processoParaEditar.id}` : `${apiBase}/processos`;
     const method = isEditing ? 'PUT' : 'POST';
 
+    // Função para limpar o objeto de dados, removendo chaves com valores nulos ou vazios.
+    // Isso evita enviar campos opcionais vazios que podem falhar na validação do backend (ex: Enums).
+    const cleanData = (obj) => {
+      const newObj = {};
+      for (const key in obj) {
+        if (obj[key] !== null && obj[key] !== '') {
+          newObj[key] = obj[key];
+        }
+      }
+      return newObj;
+    };
     try {
       const response = await fetch(url, {
         method,
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(formData),
+        body: JSON.stringify(cleanData(formData)),
       });
       if (!response.ok) {
         const errorData = await response.json();
@@ -403,13 +415,15 @@ export default function Processos() {
             <tbody>
               {processos.map((p) => (
                 <tr key={p.id}>
-                  <td style={{ border: '1px solid #ddd', padding: '8px' }}>{p.numero || 'N/A'}</td>
+                  <td style={{ border: '1px solid #ddd', padding: '8px' }}>
+                    <Link to={`/processos/${p.id}`}>{p.numero || 'Ver Detalhes'}</Link>
+                  </td>
                   <td style={{ border: '1px solid #ddd', padding: '8px' }}>{p.autor || 'N/A'}</td>
                   <td style={{ border: '1px solid #ddd', padding: '8px' }}>{p.reu || 'N/A'}</td>
                   <td style={{ border: '1px solid #ddd', padding: '8px' }}>{p.categoria || 'N/A'}</td>
                   <td style={{ border: '1px solid #ddd', padding: '8px' }}>{p.tipo || 'N/A'}</td>
                   <td style={{ border: '1px solid #ddd', padding: '8px' }}>{p.comarca || 'N/A'} - {p.uf || 'N/A'}</td>
-                  <td style={{ border: '1px solid #ddd', padding: '8px' }}>{p.cliente ? p.cliente.nome : 'N/A'}</td>
+                  <td style={{ border: '1px solid #ddd', padding: '8px' }}>{p.cliente?.nome || 'N/A'}</td>
                   <td style={{ border: '1px solid #ddd', padding: '8px' }}>{p.status || 'N/A'}</td>
                   <td style={{ border: '1px solid #ddd', padding: '8px' }}>
                     <button onClick={() => handleEdit(p)}>Editar</button>

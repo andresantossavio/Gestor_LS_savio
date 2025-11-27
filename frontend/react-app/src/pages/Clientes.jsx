@@ -27,6 +27,21 @@ function ClienteForm({ clienteParaEditar, onFormSubmit, onCancel }) {
     ...clienteParaEditar
   });
 
+  const [ufs, setUfs] = useState([]);
+
+  useEffect(() => {
+    const fetchUfs = async () => {
+        try {
+            const res = await fetch(`${apiBase}/config/ufs`);
+            if (!res.ok) throw new Error('Falha ao buscar UFs');
+            setUfs(await res.json());
+        } catch (err) {
+            console.error("Erro ao buscar UFs:", err);
+        }
+    };
+    fetchUfs();
+  }, []);
+
   const isEditing = !!clienteParaEditar?.id;
 
   const handleChange = (e) => {
@@ -56,11 +71,24 @@ function ClienteForm({ clienteParaEditar, onFormSubmit, onCancel }) {
     const url = isEditing ? `${apiBase}/clientes/${clienteParaEditar.id}` : `${apiBase}/clientes`;
     const method = isEditing ? 'PUT' : 'POST';
 
+    // Função para limpar o objeto de dados, removendo chaves com valores nulos ou vazios.
+    // Isso evita enviar campos opcionais vazios que podem falhar na validação do backend (ex: Enums).
+    const cleanData = (obj) => {
+      const newObj = {};
+      for (const key in obj) {
+        if (obj[key] !== null && obj[key] !== '') {
+          newObj[key] = obj[key];
+        }
+      }
+      delete newObj.id; // Remove o id que não faz parte do schema de criação/atualização
+      return newObj;
+    };
+
     try {
       const response = await fetch(url, {
         method,
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(formData),
+        body: JSON.stringify(cleanData(formData)),
       });
       if (!response.ok) {
         const errorData = await response.json();
@@ -148,7 +176,10 @@ function ClienteForm({ clienteParaEditar, onFormSubmit, onCancel }) {
             <input name="complemento" value={formData.complemento} onChange={handleChange} placeholder="Complemento (Apto, Bloco)" style={{ display: 'block', marginBottom: '10px', width: '300px' }} />
             <input name="bairro" value={formData.bairro} onChange={handleChange} placeholder="Bairro" style={{ display: 'block', marginBottom: '10px', width: '300px' }} />
             <input name="cidade" value={formData.cidade} onChange={handleChange} placeholder="Cidade" style={{ display: 'block', marginBottom: '10px', width: '300px' }} />
-            <input name="uf" value={formData.uf} onChange={handleChange} placeholder="UF" maxLength="2" style={{ display: 'block', marginBottom: '10px', width: '300px' }} />
+            <select name="uf" value={formData.uf} onChange={handleChange} style={{ display: 'block', marginBottom: '10px', width: '300px' }}>
+              <option value="">Selecione a UF</option>
+              {ufs.map(uf => <option key={uf} value={uf}>{uf}</option>)}
+            </select>
           </>
         )}
 
@@ -166,7 +197,7 @@ export default function Clientes() {
 
   const load = useCallback(async () => {
     try {
-      const res = await fetch('/api/clientes');
+      const res = await fetch(`${apiBase}/clientes`);
       if (!res.ok) throw new Error(`Erro na API: ${res.status}`);
       const json = await res.json();
       setClientes(json);

@@ -24,8 +24,8 @@ class Usuario(Base):
     senha = Column(String(200), nullable=False)
     perfil = Column(String(50), default="Administrador")
     tarefas = relationship("Tarefa", back_populates="responsavel")
-    andamentos = relationship("Andamento", back_populates="criado_por_usuario")
-    anexos = relationship("Anexo", back_populates="criado_por_usuario")
+    andamentos = relationship("Andamento")
+    anexos = relationship("Anexo")
 
 class Cliente(Base):
     __tablename__ = "clientes"
@@ -33,7 +33,7 @@ class Cliente(Base):
     id = Column(Integer, primary_key=True, index=True)
     nome = Column(String, nullable=False)
     nome_fantasia = Column(String, nullable=True)
-    cpf_cnpj = Column(String, unique=True, nullable=False)
+    cpf_cnpj = Column(String, nullable=False)
     tipo_pessoa = Column(String) # Pessoa Física ou Pessoa Jurídica
     tipo_pj = Column(String) # Direito Público ou Direito Privado
     subtipo_pj = Column(String) # MEI, LTDA, Autarquia, etc.
@@ -74,10 +74,10 @@ class Processo(Base):
     data_fechamento = Column(String)
     cliente_id = Column(Integer, ForeignKey("clientes.id"))
     cliente = relationship("Cliente", back_populates="processos")
-    andamentos = relationship("Andamento", back_populates="processo", cascade="all, delete-orphan")
-    tarefas = relationship("Tarefa", back_populates="processo", cascade="all, delete-orphan")
-    anexos = relationship("Anexo", back_populates="processo", cascade="all, delete-orphan")
-    pagamentos = relationship("Pagamento", back_populates="processo", cascade="all, delete-orphan")
+    andamentos = relationship("Andamento", cascade="all, delete-orphan")
+    tarefas = relationship("Tarefa", cascade="all, delete-orphan")
+    anexos = relationship("Anexo", cascade="all, delete-orphan")
+    pagamentos = relationship("Pagamento", cascade="all, delete-orphan")
 
 class Pagamento(Base):
     __tablename__ = "pagamentos"
@@ -88,7 +88,7 @@ class Pagamento(Base):
     data_pagamento = Column(Date)
     tipo = Column(String)
     processo_id = Column(Integer, ForeignKey("processos.id"))
-    processo = relationship("Processo", back_populates="pagamentos")
+    processo = relationship("Processo")
 
 class Andamento(Base):
     __tablename__ = "andamentos"
@@ -101,10 +101,10 @@ class Andamento(Base):
     criado_por = Column(Integer, ForeignKey("usuarios.id"), nullable=True)
     criado_em = Column(DateTime, default=datetime.utcnow)
     
-    processo = relationship("Processo", back_populates="andamentos")
+    processo = relationship("Processo")
     tipo_andamento = relationship("TipoAndamento")
-    criado_por_usuario = relationship("Usuario", back_populates="andamentos")
-    anexos = relationship("Anexo", back_populates="andamento", cascade="all, delete-orphan")
+    criado_por_usuario = relationship("Usuario")
+    anexos = relationship("Anexo", cascade="all, delete-orphan")
 
 class Tarefa(Base):
     __tablename__ = "tarefas"
@@ -119,7 +119,7 @@ class Tarefa(Base):
     criado_em = Column(DateTime, default=datetime.utcnow)
     atualizado_em = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
     
-    processo = relationship("Processo", back_populates="tarefas")
+    processo = relationship("Processo")
     tipo_tarefa = relationship("TipoTarefa")
     responsavel = relationship("Usuario", back_populates="tarefas")
 
@@ -135,9 +135,9 @@ class Anexo(Base):
     tamanho = Column(Integer)
     criado_por = Column(Integer, ForeignKey("usuarios.id"), nullable=True)
     criado_em = Column(DateTime, default=datetime.utcnow)
-    processo = relationship("Processo", back_populates="anexos")
-    andamento = relationship("Andamento", back_populates="anexos")
-    criado_por_usuario = relationship("Usuario", back_populates="anexos")
+    processo = relationship("Processo")
+    andamento = relationship("Andamento")
+    criado_por_usuario = relationship("Usuario")
 
 class TipoAndamento(Base):
     __tablename__ = "tipos_andamento"

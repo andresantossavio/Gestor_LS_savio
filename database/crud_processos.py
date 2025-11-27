@@ -1,5 +1,5 @@
 from sqlalchemy.orm import Session
-from . import models
+from . import models, crud_clientes
 
 def buscar_processo(db: Session, processo_id: int):
     """Busca um processo pelo ID."""
@@ -7,6 +7,7 @@ def buscar_processo(db: Session, processo_id: int):
 
 def listar_processos(db: Session):
     """Lista todos os processos."""
+    # A relação com o cliente é carregada automaticamente pelo SQLAlchemy/Pydantic.
     return db.query(models.Processo).all()
 
 def criar_processo(db: Session, **kwargs):

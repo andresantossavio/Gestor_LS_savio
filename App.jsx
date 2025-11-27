@@ -3,7 +3,10 @@ import { BrowserRouter, Routes, Route, Link } from 'react-router-dom';
 
 // Importe seus componentes de página
 import Dashboard from './pages/Dashboard';
+import ProcessosLayout from './pages/ProcessosLayout'; // Importa o novo layout
+import ProcessoDetalhe from './pages/ProcessoDetalhe'; // Importa a nova página
 import Processos from './pages/Processos';
+import Clientes from './pages/Clientes';
 import Cadastros from './pages/Cadastros';
 import Usuarios from './pages/Usuarios';
 import Config from './pages/Config';
@@ -13,7 +16,7 @@ import './App.css'; // Você pode criar este arquivo para estilização
 
 function App() {
   return (
-    <BrowserRouter>
+    <BrowserRouter basename="/frontend">
       <div className="app-container" style={{ display: 'flex' }}>
         <nav className="sidebar" style={{ width: '220px', background: '#f4f4f4', padding: '20px' }}>
           <h2>Gestor LS</h2>
@@ -30,9 +33,15 @@ function App() {
           <Routes>
             {/* Defina qual componente renderizar para cada rota */}
             <Route path="/" element={<Dashboard />} />
-            <Route path="/processos" element={<Processos />} />
-            <Route path="/cadastros" element={<Cadastros />} />
-            <Route path="/usuarios" element={<Usuarios />} />
+            <Route path="/processos" element={<ProcessosLayout />}>
+              <Route index element={<Processos />} /> {/* Rota para a lista em /processos */}
+              <Route path=":processoId" element={<ProcessoDetalhe />} /> {/* Rota para o detalhe em /processos/:id */}
+            </Route>
+            <Route path="/cadastros" element={<Cadastros />}>
+              {/* Rotas aninhadas dentro de Cadastros */}
+              <Route path="clientes" element={<Clientes />} />
+            </Route>
+            <Route path="/usuarios" element={<Usuarios />} /> {/* Mantemos a rota de usuários */}
             <Route path="/configuracoes" element={<Config />} />
             <Route path="/contabilidade" element={<Contabilidade />} /> {/* 3. Adicionar a rota */}
             

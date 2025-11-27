@@ -1,14 +1,10 @@
 from sqlalchemy.orm import Session
-from database.models import Cliente
+from . import models
 
 
-def criar_cliente(nome: str, cpf_cnpj: str, telefone: str, email: str, db: Session):
-    cliente = Cliente(
-        nome=nome,
-        cpf_cnpj=cpf_cnpj,
-        telefone=telefone,
-        email=email
-    )
+def criar_cliente(db: Session, **kwargs):
+    """Cria um novo cliente com base nos dados fornecidos."""
+    cliente = models.Cliente(**kwargs)
     db.add(cliente)
     db.commit()
     db.refresh(cliente)
@@ -16,15 +12,19 @@ def criar_cliente(nome: str, cpf_cnpj: str, telefone: str, email: str, db: Sessi
 
 
 def listar_clientes(db: Session):
-    return db.query(Cliente).order_by(Cliente.nome).all()
+    return db.query(models.Cliente).order_by(models.Cliente.nome).all()
 
 
 def buscar_cliente_por_id(cliente_id: int, db: Session):
-    return db.query(Cliente).filter(Cliente.id == cliente_id).first()
+    return db.query(models.Cliente).filter(models.Cliente.id == cliente_id).first()
 
+# Função que estava faltando, usada por outros módulos (como processos)
+def buscar_cliente(db: Session, cliente_id: int):
+    """Busca um cliente pelo ID."""
+    return db.query(models.Cliente).filter(models.Cliente.id == cliente_id).first()
 
 def atualizar_cliente(cliente_id: int, db: Session, **kwargs):
-    cliente = db.query(Cliente).filter(Cliente.id == cliente_id).first()
+    cliente = buscar_cliente_por_id(cliente_id, db)
     if cliente:
         for key, value in kwargs.items():
             setattr(cliente, key, value)
@@ -34,7 +34,7 @@ def atualizar_cliente(cliente_id: int, db: Session, **kwargs):
 
 
 def deletar_cliente(cliente_id: int, db: Session):
-    cliente = db.query(Cliente).filter(Cliente.id == cliente_id).first()
+    cliente = buscar_cliente_por_id(cliente_id, db)
     if cliente:
         db.delete(cliente)
         db.commit()

@@ -48,6 +48,12 @@ class Processo(Base):
     comarca = Column(String)
     vara = Column(String)
     fase = Column(String)
+    categoria = Column(String, nullable=True) # Ex: Comum, Originário
+    tribunal_originario = Column(String, nullable=True) # Ex: STJ, STF, etc.
+    esfera_justica = Column(String, nullable=True) # Ex: Justiça Federal, Justiça Estadual
+    tipo = Column(String, nullable=True) # Ex: Judicial, Extrajudicial, etc.
+    classe = Column(String, nullable=True) # Ex: Cível, Criminal, Trabalhista
+    sub_classe = Column(String, nullable=True) # Ex: Ação Pública, Ação Privada
     status = Column(String)
     observacoes = Column(String)
     data_abertura = Column(String)

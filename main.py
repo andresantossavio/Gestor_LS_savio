@@ -1,6 +1,8 @@
 from fastapi import FastAPI, Depends, UploadFile, File, Form, HTTPException
 from sqlalchemy.orm import Session 
 from fastapi.staticfiles import StaticFiles
+from enum import Enum
+from fastapi.middleware.cors import CORSMiddleware
 from typing import List
 from pydantic import BaseModel, ConfigDict
 
@@ -9,23 +11,110 @@ from database import models
 from database.database import SessionLocal, engine
 from database import crud_processos, crud_usuarios, crud_clientes, crud_pagamentos, crud_tarefas, crud_anexos, crud_andamentos
 
-# Cria as tabelas no banco de dados se elas não existirem
-models.Base.metadata.create_all(bind=engine)
+# Função para criar as tabelas no banco de dados.
+# Isso garante que, se o arquivo .db for deletado, ele será recriado na próxima vez que o servidor iniciar.
+def create_database():
+    models.Base.metadata.create_all(bind=engine)
 
 # Cria a aplicação FastAPI
 app = FastAPI()
 
+# --- Configuração do CORS ---
+# Permite que o frontend (rodando em localhost:3000) se comunique com o backend (rodando em localhost:8000)
+origins = [
+    "http://localhost:3000",
+    "http://localhost:5173", # Adicionado caso use Vite
+]
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=origins,
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+# --- Evento de Inicialização ---
+@app.on_event("startup")
+def on_startup():
+    create_database()
 # --- Pydantic Schemas (Modelos de dados para a API) ---
+
+# Enum para as Unidades Federativas (UFs) do Brasil
+class UFsEnum(str, Enum):
+    AC = "AC"
+    AL = "AL"
+    AP = "AP"
+    AM = "AM"
+    BA = "BA"
+    CE = "CE"
+    DF = "DF"
+    ES = "ES"
+    GO = "GO"
+    MA = "MA"
+    MT = "MT"
+    MS = "MS"
+    MG = "MG"
+    PA = "PA"
+    PB = "PB"
+    PR = "PR"
+    PE = "PE"
+    PI = "PI"
+    RJ = "RJ"
+    RN = "RN"
+    RS = "RS"
+    RO = "RO"
+    RR = "RR"
+    SC = "SC"
+    SP = "SP"
+    SE = "SE"
+    TO = "TO"
+
+# Enum para os Tipos de Processo
+class TipoProcessoEnum(str, Enum):
+    EXTRAJUDICIAL = "Extrajudicial"
+    ADMINISTRATIVO = "Administrativo"
+    JUDICIAL = "Judicial"
+    ARBITRAL = "Arbitral"
+
+# Enum para a Categoria do Processo
+class CategoriaEnum(str, Enum):
+    COMUM = "Comum"
+    ORIGINARIO = "Originário"
+
+# Enum para os Tribunais de Processo Originário
+class TribunalOriginarioEnum(str, Enum):
+    STJ = "STJ"
+    STF = "STF"
+    TJ = "TJ"
+    TRT = "TRT"
+    TRF = "TRF"
+    TRM = "TRM"
+    TRE = "TRE"
+
+# Enum para a Esfera de Justiça
+class EsferaJusticaEnum(str, Enum):
+    FEDERAL = "Justiça Federal"
+    ESTADUAL = "Justiça Estadual"
+    TRABALHISTA = "Justiça Trabalhista"
+    MILITAR = "Justiça Militar"
+    ELEITORAL = "Justiça Eleitoral"
 
 class ProcessoSchema(BaseModel):
     id: int
     numero: str | None = None
     autor: str | None = None
     reu: str | None = None
-    uf: str | None = None
+    uf: UFsEnum | None = None
+    categoria: CategoriaEnum | None = None
+    tribunal_originario: TribunalOriginarioEnum | None = None
+    esfera_justica: EsferaJusticaEnum | None = None
+    tipo: TipoProcessoEnum | None = None
     comarca: str | None = None
     vara: str | None = None
     fase: str | None = None
+    classe: str | None = None
+    sub_classe: str | None = None
     status: str | None = None
     data_abertura: str | None = None
 
@@ -81,12 +170,18 @@ class ProcessoCreateSchema(BaseModel):
     numero: str | None = None
     autor: str | None = None
     reu: str | None = None
-    uf: str | None = None
+    uf: UFsEnum | None = None
+    categoria: CategoriaEnum | None = None
+    tribunal_originario: TribunalOriginarioEnum | None = None
+    esfera_justica: EsferaJusticaEnum | None = None
+    tipo: TipoProcessoEnum | None = None
     comarca: str | None = None
     vara: str | None = None
     fase: str | None = None
     status: str | None = None
     data_abertura: str | None = None
+    classe: str | None = None
+    sub_classe: str | None = None
     cliente_id: int | None = None
     observacoes: str | None = None
 
@@ -148,6 +243,48 @@ def get_db():
 @app.get("/")
 def read_root():
     return {"message": "Bem-vindo à API do GESTOR_LS"}
+
+# --- Endpoints de Configuração ---
+
+@app.get("/api/config/ufs", response_model=List[str])
+def api_listar_ufs():
+    """Retorna a lista de todas as UFs do Brasil."""
+    return [uf.value for uf in UFsEnum]
+
+@app.get("/api/config/tipos", response_model=List[str])
+def api_listar_tipos():
+    """Retorna os tipos de processo."""
+    return [tipo.value for tipo in TipoProcessoEnum]
+
+@app.get("/api/config/categorias", response_model=List[str])
+def api_listar_categorias():
+    """Retorna as categorias de processo (Comum, Originário)."""
+    return [cat.value for cat in CategoriaEnum]
+
+@app.get("/api/config/tribunais", response_model=List[str])
+def api_listar_tribunais():
+    """Retorna a lista de tribunais para processos originários."""
+    return [trib.value for trib in TribunalOriginarioEnum]
+
+@app.get("/api/config/esferas", response_model=List[str])
+def api_listar_esferas():
+    """Retorna as esferas de justiça (Federal, Estadual)."""
+    return [esfera.value for esfera in EsferaJusticaEnum]
+
+@app.get("/api/config/classes", response_model=dict)
+def api_listar_classes():
+    """Retorna a estrutura de classes e sub-classes jurídicas."""
+    return {
+        "Cível": ["Comum", "Juizado Especial", "Família", "Inventário"],
+        "Criminal": ["Ação Privada", "Ação Pública"],
+        "Trabalhista": [], # Confirmando que não há sub-classes
+        "Tributário": [],
+        "Empresarial": [],
+        "Previdenciário": [],
+        "Eleitoral": ["Eleitoral Cível", "Eleitoral Criminal"]
+    }
+
+# --- Endpoints de Processos ---
 
 @app.get("/api/processos", response_model=List[ProcessoSchema])
 def api_listar_processos(db: Session = Depends(get_db)):
@@ -265,3 +402,8 @@ async def api_criar_anexo(
     # Ex: caminho = await crud_anexos.salvar_arquivo(file)
     #     crud_anexos.criar_anexo(db, processo_id=processo_id, caminho_arquivo=caminho, ...)
     return {"filename": file.filename, "processo_id": processo_id, "message": "Anexo recebido, lógica de salvamento a ser implementada."}
+
+# --- Servir o Frontend (React) ---
+# Esta linha faz com que o FastAPI sirva os arquivos da pasta 'build' do seu app React.
+# Descomente a linha abaixo apenas quando for fazer o deploy para produção.
+# app.mount("/", StaticFiles(directory="frontend/react-app/build", html=True), name="static")

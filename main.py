@@ -124,11 +124,65 @@ class ProcessoSchema(BaseModel):
 class ClienteSchema(BaseModel):
     id: int
     nome: str
+    nome_fantasia: str | None = None
     cpf_cnpj: str
+    tipo_pessoa: str | None = None
+    tipo_pj: str | None = None
+    subtipo_pj: str | None = None
+    capacidade: str | None = None
+    responsavel_nome: str | None = None
+    responsavel_cpf: str | None = None
     telefone: str | None = None
     email: str | None = None
+    logradouro: str | None = None
+    numero: str | None = None
+    complemento: str | None = None
+    bairro: str | None = None
+    cidade: str | None = None
+    uf: str | None = None
+    cep: str | None = None
 
     model_config = ConfigDict(from_attributes=True)
+
+class ClienteCreateSchema(BaseModel):
+    nome: str
+    cpf_cnpj: str
+    nome_fantasia: str | None = None
+    tipo_pessoa: str | None = None
+    tipo_pj: str | None = None
+    subtipo_pj: str | None = None
+    capacidade: str | None = None
+    responsavel_nome: str | None = None
+    responsavel_cpf: str | None = None
+    telefone: str | None = None
+    email: str | None = None
+    logradouro: str | None = None
+    numero: str | None = None
+    complemento: str | None = None
+    bairro: str | None = None
+    cidade: str | None = None
+    uf: str | None = None
+    cep: str | None = None
+
+class ClienteUpdateSchema(BaseModel):
+    nome: str | None = None
+    cpf_cnpj: str | None = None
+    nome_fantasia: str | None = None
+    tipo_pessoa: str | None = None
+    tipo_pj: str | None = None
+    subtipo_pj: str | None = None
+    capacidade: str | None = None
+    responsavel_nome: str | None = None
+    responsavel_cpf: str | None = None
+    telefone: str | None = None
+    email: str | None = None
+    logradouro: str | None = None
+    numero: str | None = None
+    complemento: str | None = None
+    bairro: str | None = None
+    cidade: str | None = None
+    uf: str | None = None
+    cep: str | None = None
 
 class PagamentoSchema(BaseModel):
     id: int
@@ -353,6 +407,29 @@ def api_listar_clientes(db: Session = Depends(get_db)):
     """Endpoint da API para listar todos os clientes."""
     clientes = crud_clientes.listar_clientes(db)
     return clientes
+
+@app.post("/api/clientes", response_model=ClienteSchema, status_code=201)
+def api_criar_cliente(cliente: ClienteCreateSchema, db: Session = Depends(get_db)):
+    """Endpoint para criar um novo cliente."""
+    return crud_clientes.criar_cliente(db=db, **cliente.model_dump())
+
+@app.get("/api/clientes/{cliente_id}", response_model=ClienteSchema)
+def api_buscar_cliente(cliente_id: int, db: Session = Depends(get_db)):
+    """Endpoint para buscar um cliente específico."""
+    db_cliente = crud_clientes.buscar_cliente(db, cliente_id=cliente_id)
+    if db_cliente is None:
+        raise HTTPException(status_code=404, detail="Cliente não encontrado")
+    return db_cliente
+
+@app.put("/api/clientes/{cliente_id}", response_model=ClienteSchema)
+def api_atualizar_cliente(cliente_id: int, cliente: ClienteUpdateSchema, db: Session = Depends(get_db)):
+    """Endpoint para atualizar um cliente."""
+    return crud_clientes.atualizar_cliente(db=db, cliente_id=cliente_id, dados_cliente=cliente.model_dump(exclude_unset=True))
+
+@app.delete("/api/clientes/{cliente_id}", status_code=204)
+def api_deletar_cliente(cliente_id: int, db: Session = Depends(get_db)):
+    crud_clientes.deletar_cliente(db=db, cliente_id=cliente_id)
+    return {"ok": True}
 
 @app.get("/api/pagamentos", response_model=List[PagamentoSchema])
 def api_listar_pagamentos(db: Session = Depends(get_db)):

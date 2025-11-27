@@ -32,9 +32,23 @@ class Cliente(Base):
     
     id = Column(Integer, primary_key=True, index=True)
     nome = Column(String, nullable=False)
+    nome_fantasia = Column(String, nullable=True)
     cpf_cnpj = Column(String, unique=True, nullable=False)
+    tipo_pessoa = Column(String) # Pessoa Física ou Pessoa Jurídica
+    tipo_pj = Column(String) # Direito Público ou Direito Privado
+    subtipo_pj = Column(String) # MEI, LTDA, Autarquia, etc.
+    capacidade = Column(String, nullable=True) # Capaz, Relativamente Incapaz, Incapaz
+    responsavel_nome = Column(String, nullable=True)
+    responsavel_cpf = Column(String, nullable=True)
     telefone = Column(String)
     email = Column(String)
+    logradouro = Column(String)
+    numero = Column(String)
+    complemento = Column(String)
+    bairro = Column(String)
+    cidade = Column(String)
+    uf = Column(String(2))
+    cep = Column(String)
     processos = relationship("Processo", back_populates="cliente", cascade="all, delete-orphan")
 
 class Processo(Base):

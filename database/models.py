@@ -152,3 +152,110 @@ class TipoTarefa(Base):
     id = Column(Integer, primary_key=True)
     nome = Column(String(150), unique=True, nullable=False)
     descricao_padrao = Column(Text, nullable=True)
+
+
+# Modelos de Contabilidade
+class Socio(Base):
+    __tablename__ = "socios"
+
+    id = Column(Integer, primary_key=True, index=True)
+    nome = Column(String(120), nullable=False, unique=True)
+    funcao = Column(String(80), nullable=True)
+    capital_social = Column(Float, nullable=True)
+    percentual = Column(Float, nullable=True) # Percentual padrão na sociedade
+    saldo = Column(Float, default=0.0, nullable=False) # Saldo de lucros distribuídos
+
+    # Relacionamentos para despesas e entradas
+    despesas = relationship("DespesaSocio", back_populates="socio")
+    entradas = relationship("EntradaSocio", back_populates="socio")
+
+class ConfiguracaoContabil(Base):
+    __tablename__ = "configuracao_contabil"
+
+    id = Column(Integer, primary_key=True, index=True)
+    percentual_administrador = Column(Float, default=0.05)
+    percentual_fundo_reserva = Column(Float, default=0.10)
+
+class Entrada(Base):
+    __tablename__ = "entradas"
+
+    id = Column(Integer, primary_key=True, index=True)
+    cliente = Column(String(255), nullable=False)
+    data = Column(Date, nullable=False, default=datetime.utcnow)
+    valor = Column(Float, nullable=False)
+    
+    # Relacionamento com os sócios e seus percentuais para esta entrada
+    socios = relationship("EntradaSocio", back_populates="entrada", cascade="all, delete-orphan")
+    lancamentos = relationship("LancamentoContabil", back_populates="entrada", cascade="all, delete-orphan")
+
+
+class Despesa(Base):
+    __tablename__ = "despesas"
+
+    id = Column(Integer, primary_key=True, index=True)
+    data = Column(Date, nullable=False, default=datetime.utcnow)
+    especie = Column(String(100)) # Ex: Estrutura, Individual/Setor
+    tipo = Column(String(100)) # Ex: Internet, Estagiário
+    descricao = Column(Text, nullable=True)
+    valor = Column(Float, nullable=False)
+
+    # Relacionamento com os sócios responsáveis
+    responsaveis = relationship("DespesaSocio", back_populates="despesa", cascade="all, delete-orphan")
+    lancamentos = relationship("LancamentoContabil", back_populates="despesa", cascade="all, delete-orphan")
+
+
+class EntradaSocio(Base):
+    __tablename__ = "entradas_socios"
+
+    entrada_id = Column(Integer, ForeignKey("entradas.id"), primary_key=True)
+    socio_id = Column(Integer, ForeignKey("socios.id"), primary_key=True)
+    percentual = Column(Float, nullable=False)
+
+    entrada = relationship("Entrada", back_populates="socios")
+    socio = relationship("Socio", back_populates="entradas")
+
+
+class DespesaSocio(Base):
+    __tablename__ = "despesas_socios"
+
+    despesa_id = Column(Integer, ForeignKey("despesas.id"), primary_key=True)
+    socio_id = Column(Integer, ForeignKey("socios.id"), primary_key=True)
+
+    despesa = relationship("Despesa", back_populates="responsaveis")
+    socio = relationship("Socio", back_populates="despesas")
+
+
+class PlanoDeContas(Base):
+    __tablename__ = "plano_de_contas"
+
+    id = Column(Integer, primary_key=True, index=True)
+    codigo = Column(String(50), unique=True, nullable=False)
+    descricao = Column(String(255), nullable=False)
+    tipo = Column(String(50), nullable=False) # Ativo, Passivo, PL, Receita, Despesa
+
+
+class LancamentoContabil(Base):
+    __tablename__ = "lancamentos_contabeis"
+
+    id = Column(Integer, primary_key=True, index=True)
+    data = Column(Date, nullable=False, default=datetime.utcnow)
+    conta_debito_id = Column(Integer, ForeignKey("plano_de_contas.id"), nullable=False)
+    conta_credito_id = Column(Integer, ForeignKey("plano_de_contas.id"), nullable=False)
+    valor = Column(Float, nullable=False)
+    historico = Column(Text)
+
+    # Relacionamentos para rastrear a origem do lançamento
+    entrada_id = Column(Integer, ForeignKey("entradas.id"), nullable=True)
+    despesa_id = Column(Integer, ForeignKey("despesas.id"), nullable=True)
+    
+    entrada = relationship("Entrada", back_populates="lancamentos")
+    despesa = relationship("Despesa", back_populates="lancamentos")
+    conta_debito = relationship("PlanoDeContas", foreign_keys=[conta_debito_id])
+    conta_credito = relationship("PlanoDeContas", foreign_keys=[conta_credito_id])
+
+class Fundo(Base):
+    __tablename__ = "fundos"
+
+    id = Column(Integer, primary_key=True, index=True)
+    nome = Column(String(100), unique=True, nullable=False)
+    saldo = Column(Float, default=0.0, nullable=False)

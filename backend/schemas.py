@@ -1,6 +1,6 @@
 from pydantic import BaseModel
 from datetime import date, datetime
-from typing import Optional
+from typing import Optional, List
 
 class ClienteBase(BaseModel):
     nome: str
@@ -142,8 +142,123 @@ class UsuarioBase(BaseModel):
 class UsuarioCreate(UsuarioBase):
     senha: str
 
+class UsuarioUpdate(UsuarioBase):
+    nome: Optional[str] = None
+    login: Optional[str] = None
+    senha: Optional[str] = None
+
 class Usuario(UsuarioBase):
     id: int
 
+    class Config:
+        from_attributes = True
+
+
+# Schemas de Contabilidade
+
+# Schemas para Socio
+class SocioBase(BaseModel):
+    nome: str
+    funcao: Optional[str] = None
+    capital_social: Optional[float] = None
+    percentual: Optional[float] = None
+
+class SocioCreate(SocioBase):
+    pass
+
+class SocioUpdate(SocioBase):
+    nome: Optional[str] = None
+
+class Socio(SocioBase):
+    id: int
+    class Config:
+        from_attributes = True
+
+
+# --- Schemas para Criação ---
+class EntradaSocioCreate(BaseModel):
+    socio_id: int
+    percentual: float
+
+class DespesaSocioCreate(BaseModel):
+    socio_id: int
+
+# --- Schemas para Leitura (com dados aninhados) ---
+class EntradaSocio(BaseModel):
+    percentual: float
+    socio: Socio
+    class Config:
+        from_attributes = True
+
+class DespesaSocio(BaseModel):
+    socio: Socio
+    class Config:
+        from_attributes = True
+
+
+# Schemas para Entrada
+class EntradaBase(BaseModel):
+    cliente: str
+    data: date
+    valor: float
+
+class EntradaCreate(EntradaBase):
+    socios: List[EntradaSocioCreate] = []
+
+class Entrada(EntradaBase):
+    id: int
+    socios: List[EntradaSocio] = []
+    class Config:
+        from_attributes = True
+
+
+# Schemas para Despesa
+class DespesaBase(BaseModel):
+    data: date
+    especie: str
+    tipo: str
+    descricao: Optional[str] = None
+    valor: float
+
+class DespesaCreate(DespesaBase):
+    responsaveis: List[DespesaSocioCreate] = []
+
+class Despesa(DespesaBase):
+    id: int
+    responsaveis: List[DespesaSocio] = []
+    class Config:
+        from_attributes = True
+
+
+# Schemas para PlanoDeContas
+class PlanoDeContasBase(BaseModel):
+    codigo: str
+    descricao: str
+    tipo: str
+
+class PlanoDeContasCreate(PlanoDeContasBase):
+    pass
+
+class PlanoDeContas(PlanoDeContasBase):
+    id: int
+    class Config:
+        from_attributes = True
+
+
+# Schemas para LancamentoContabil
+class LancamentoContabilBase(BaseModel):
+    data: date
+    conta_debito_id: int
+    conta_credito_id: int
+    valor: float
+    historico: Optional[str] = None
+    entrada_id: Optional[int] = None
+    despesa_id: Optional[int] = None
+
+class LancamentoContabilCreate(LancamentoContabilBase):
+    pass
+
+class LancamentoContabil(LancamentoContabilBase):
+    id: int
     class Config:
         from_attributes = True

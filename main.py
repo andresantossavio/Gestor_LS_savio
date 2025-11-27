@@ -1,5 +1,6 @@
 from fastapi import FastAPI, Depends, UploadFile, File, Form, HTTPException
 from sqlalchemy.orm import Session 
+from contextlib import asynccontextmanager
 from fastapi.staticfiles import StaticFiles
 from enum import Enum
 from fastapi.middleware.cors import CORSMiddleware
@@ -9,15 +10,27 @@ from pydantic import BaseModel, ConfigDict
 # Importa os componentes do banco de dados
 from database import models
 from database.database import SessionLocal, engine
-from database import crud_processos, crud_usuarios, crud_clientes, crud_pagamentos, crud_tarefas, crud_anexos, crud_andamentos
+from database import crud_processos, crud_usuarios, crud_clientes, crud_pagamentos, crud_tarefas, crud_anexos, crud_andamentos, crud_contabilidade
+from backend import schemas
+
 
 # Função para criar as tabelas no banco de dados.
 # Isso garante que, se o arquivo .db for deletado, ele será recriado na próxima vez que o servidor iniciar.
 def create_database():
     models.Base.metadata.create_all(bind=engine)
 
-# Cria a aplicação FastAPI
-app = FastAPI()
+# --- Lifespan para gerenciar eventos de inicialização e desligamento ---
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    # Código a ser executado antes da aplicação iniciar
+    print("Iniciando a aplicação e criando o banco de dados...")
+    create_database()
+    yield
+    # Código a ser executado quando a aplicação for desligada (se necessário)
+    print("Aplicação encerrada.")
+
+# Cria a aplicação FastAPI com o gerenciador de lifespan
+app = FastAPI(lifespan=lifespan)
 
 # --- Configuração do CORS ---
 # Permite que o frontend (rodando em localhost:3000) se comunique com o backend (rodando em localhost:8000)
@@ -34,10 +47,6 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# --- Evento de Inicialização ---
-@app.on_event("startup")
-def on_startup():
-    create_database()
 # --- Pydantic Schemas (Modelos de dados para a API) ---
 
 # Enum para as Unidades Federativas (UFs) do Brasil
@@ -493,6 +502,55 @@ async def api_criar_anexo(
     # Ex: caminho = await crud_anexos.salvar_arquivo(file)
     #     crud_anexos.criar_anexo(db, processo_id=processo_id, caminho_arquivo=caminho, ...)
     return {"filename": file.filename, "processo_id": processo_id, "message": "Anexo recebido, lógica de salvamento a ser implementada."}
+
+
+# --- Endpoints de Contabilidade ---
+
+# Endpoints para Socios
+@app.post("/api/contabilidade/socios", response_model=schemas.Socio, status_code=201)
+def api_criar_socio(socio: schemas.SocioCreate, db: Session = Depends(get_db)):
+    return crud_contabilidade.create_socio(db=db, socio=socio)
+
+@app.get("/api/contabilidade/socios", response_model=List[schemas.Socio])
+def api_listar_socios(skip: int = 0, limit: int = 100, db: Session = Depends(get_db)):
+    socios = crud_contabilidade.get_socios(db, skip=skip, limit=limit)
+    return socios
+
+@app.get("/api/contabilidade/socios/{socio_id}", response_model=schemas.Socio)
+def api_buscar_socio(socio_id: int, db: Session = Depends(get_db)):
+    db_socio = crud_contabilidade.get_socio(db, socio_id=socio_id)
+    if db_socio is None:
+        raise HTTPException(status_code=404, detail="Sócio não encontrado")
+    return db_socio
+
+@app.put("/api/contabilidade/socios/{socio_id}", response_model=schemas.Socio)
+def api_atualizar_socio(socio_id: int, socio: schemas.SocioUpdate, db: Session = Depends(get_db)):
+    return crud_contabilidade.update_socio(db=db, socio_id=socio_id, socio_update=socio)
+
+@app.delete("/api/contabilidade/socios/{socio_id}", status_code=204)
+def api_deletar_socio(socio_id: int, db: Session = Depends(get_db)):
+    crud_contabilidade.delete_socio(db=db, socio_id=socio_id)
+    return {"ok": True}
+
+# Endpoints para Entradas
+@app.post("/api/contabilidade/entradas", response_model=schemas.Entrada, status_code=201)
+def api_criar_entrada(entrada: schemas.EntradaCreate, db: Session = Depends(get_db)):
+    return crud_contabilidade.create_entrada(db=db, entrada=entrada)
+
+@app.get("/api/contabilidade/entradas", response_model=List[schemas.Entrada])
+def api_listar_entradas(skip: int = 0, limit: int = 100, db: Session = Depends(get_db)):
+    entradas = crud_contabilidade.get_entradas(db, skip=skip, limit=limit)
+    return entradas
+
+# Endpoints para Despesas
+@app.post("/api/contabilidade/despesas", response_model=schemas.Despesa, status_code=201)
+def api_criar_despesa(despesa: schemas.DespesaCreate, db: Session = Depends(get_db)):
+    return crud_contabilidade.create_despesa(db=db, despesa=despesa)
+
+@app.get("/api/contabilidade/despesas", response_model=List[schemas.Despesa])
+def api_listar_despesas(skip: int = 0, limit: int = 100, db: Session = Depends(get_db)):
+    despesas = crud_contabilidade.get_despesas(db, skip=skip, limit=limit)
+    return despesas
 
 # --- Servir o Frontend (React) ---
 # Esta linha faz com que o FastAPI sirva os arquivos da pasta 'build' do seu app React.

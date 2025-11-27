@@ -212,7 +212,19 @@ def listar_usuarios(db: Session = Depends(get_db)):
 
 @api_router.post("/usuarios", response_model=schemas.Usuario)
 def criar_usuario_api(u: schemas.UsuarioCreate, db: Session = Depends(get_db)):
-    return crud_usuarios.criar_usuario(db, u.nome, u.email, u.login, u.senha, u.perfil)
+    return crud_usuarios.criar_usuario(db, **u.model_dump())
+
+@api_router.put("/usuarios/{usuario_id}", response_model=schemas.Usuario)
+def atualizar_usuario_api(usuario_id: int, usuario: schemas.UsuarioUpdate, db: Session = Depends(get_db)):
+    u = crud_usuarios.atualizar_usuario(usuario_id, db, **usuario.model_dump(exclude_unset=True))
+    if not u:
+        raise HTTPException(status_code=404, detail="Usuário não encontrado")
+    return u
+
+@api_router.delete("/usuarios/{usuario_id}")
+def deletar_usuario_api(usuario_id: int, db: Session = Depends(get_db)):
+    crud_usuarios.deletar_usuario(usuario_id, db)
+    return {"status": "ok"}
 
 
 

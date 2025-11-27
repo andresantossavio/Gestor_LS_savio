@@ -11,4 +11,5 @@ if (-not (Test-Path ".venv\Scripts\python.exe")) {
     .\.venv\Scripts\Activate.ps1
 }
 
-python main.py
+echo "Iniciando servidor FastAPI com Uvicorn na porta 8000..."
+uvicorn main:app --host 127.0.0.1 --port 8000

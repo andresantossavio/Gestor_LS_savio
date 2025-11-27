@@ -2,7 +2,44 @@ body { font-family: Arial, sans-serif; margin: 0; }
 .app { display: flex; height: 100vh; }
 .sidebar { width: 200px; background: #1f2937; color: #fff; padding: 20px; box-sizing: border-box; }
 .sidebar .logo { font-size: 14px; font-weight: bold; margin-bottom: 20px }
-.menu-item { display: block; padding: 8px 12px; margin: 4px 0; border-radius: 6px; color: #fff; text-decoration: none }
+.menu-item { display: block; padding: 8px 12px; margin: 4px 0; border-radius: 6px; color: #fff; text-decoration: none; position: relative; }
 .menu-item:hover { background: #374151 }
 .content { flex: 1; background: #f3f4f6; padding: 20px; overflow: auto; }
 .card { background: #fff; padding: 12px; border-radius: 8px; margin-bottom: 12px }
+
+/* Estilos para o Submenu da Sidebar */
+.submenu {
+  padding-left: 15px;
+  overflow: hidden;
+}
+
+.submenu-item {
+  display: block;
+  padding: 6px 10px;
+  margin: 2px 0;
+  border-radius: 4px;
+  color: #d1d5db; /* Cor mais suave para sub-item */
+  text-decoration: none;
+  font-size: 14px;
+}
+
+.submenu-item:hover {
+  background: #374151;
+  color: #fff;
+}
+
+/* Seta para indicar submenu */
+.menu-item .submenu-arrow {
+  position: absolute;
+  right: 10px;
+  top: 50%;
+  transform: translateY(-50%);
+  transition: transform 0.2s;
+}
+
+/* Estilo para links ativos (NavLink) */
+.menu-item.active, .submenu-item.active {
+  background: #047857; /* Um verde para destacar */
+  color: #fff;
+  font-weight: bold;
+}

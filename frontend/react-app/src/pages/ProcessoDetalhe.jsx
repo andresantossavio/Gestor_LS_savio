@@ -1,7 +1,7 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useCallback } from 'react';
 import { useParams, Link } from 'react-router-dom';
-import { FaEdit } from 'react-icons/fa'; // Ícone de edição
 import Header from '../components/Header';
+import ProcessoForm from '../components/ProcessoForm'; // Importa o formulário
 
 const apiBase = '/api';
 
@@ -10,30 +10,48 @@ export default function ProcessoDetalhe() {
   const [processo, setProcesso] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
+  const [exibirForm, setExibirForm] = useState(false); // Estado para exibir o formulário
+
+  const fetchProcesso = useCallback(async () => {
+    try {
+      setLoading(true);
+      const res = await fetch(`${apiBase}/processos/${processoId}`);
+      if (!res.ok) {
+        throw new Error(`Erro na API: ${res.status}`);
+      }
+      const data = await res.json();
+      setProcesso(data);
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setLoading(false);
+    }
+  }, [processoId]);
 
   useEffect(() => {
-    const fetchProcesso = async () => {
-      try {
-        setLoading(true);
-        const res = await fetch(`${apiBase}/processos/${processoId}`);
-        if (!res.ok) {
-          throw new Error(`Erro na API: ${res.status}`);
-        }
-        const data = await res.json();
-        setProcesso(data);
-      } catch (err) {
-        setError(err.message);
-      } finally {
-        setLoading(false);
-      }
-    };
-
     fetchProcesso();
-  }, [processoId]);
+  }, [fetchProcesso]);
 
   if (loading) return <div>Carregando...</div>;
   if (error) return <div>Erro: {error}</div>;
   if (!processo) return <div>Processo não encontrado.</div>;
+
+  // Se o formulário de edição deve ser exibido
+  if (exibirForm) {
+    return (
+      <div style={{ padding: 20 }}>
+        <Header title={`Editando Processo: ${processo.numero}`} />
+        <ProcessoForm
+          processoParaEditar={processo}
+          onFormSubmit={() => {
+            setExibirForm(false); // Esconde o formulário
+            fetchProcesso(); // Recarrega os dados do processo
+          }}
+          onCancel={() => setExibirForm(false)} // Esconde o formulário ao cancelar
+        />
+      </div>
+    );
+  }
 
   return (
     <div style={{ padding: 20 }}>
@@ -55,11 +73,13 @@ export default function ProcessoDetalhe() {
           <p style={{ margin: 0 }}><strong>Réu:</strong> {processo.reu || 'N/A'}</p>
         </div>
         <div>
-          {/* Botões de Ação Fixos */}
-          <button style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
-            <FaEdit /> Editar Processo
+          {/* Botão para ativar o modo de edição */}
+          <button 
+            onClick={() => setExibirForm(true)}
+            style={{ display: 'flex', alignItems: 'center', gap: '5px' }}
+          >
+            Editar Processo
           </button>
-          {/* Outros botões podem ser adicionados aqui */}
         </div>
       </div>
 

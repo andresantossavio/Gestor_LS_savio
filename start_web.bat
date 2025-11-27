@@ -5,4 +5,5 @@ if not exist ".venv\Scripts\python.exe" (
     .venv\Scripts\python.exe -m pip install --upgrade pip
     .venv\Scripts\pip.exe install -r requirements.txt
 )
-.venv\Scripts\python.exe main.py
+echo "Iniciando servidor FastAPI com Uvicorn na porta 8000..."
+.venv\Scripts\python.exe -m uvicorn main:app --host 127.0.0.1 --port 8000

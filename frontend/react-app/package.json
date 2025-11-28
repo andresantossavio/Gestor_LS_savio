@@ -6,7 +6,7 @@
     "dev:frontend": "vite --port 3000",
     "dev:backend": "cd ../.. && .\\.venv\\Scripts\\uvicorn.exe main:app --reload",
     "dev": "concurrently \"npm:dev:frontend\" \"npm:dev:backend\"",
-    "build": "vite build --outDir ../dist",
+    "build": "vite build",
     "preview": "vite preview --port 3000"
   },
   "dependencies": {

@@ -12,21 +12,21 @@ import Usuarios from './pages/Usuarios';
 import Config from './pages/Config';
 import Contabilidade from './pages/Contabilidade';
 
-import './App.css';
+import './styles.css';
 
 function App() {
   return (
     <BrowserRouter>
       <div className="app-container" style={{ display: 'flex' }}>
-        <nav className="sidebar" style={{ width: '220px', background: '#f4f4f4', padding: '20px' }}>
-          <h2>Gestor LS</h2>
-          <ul style={{ listStyle: 'none', padding: 0 }}>
-            <li style={{ marginBottom: '10px' }}><Link to="/">Dashboard</Link></li>
-            <li style={{ marginBottom: '10px' }}><Link to="/processos">Processos</Link></li>
-            <li style={{ marginBottom: '10px' }}><Link to="/cadastros">Cadastros</Link></li>
-            <li style={{ marginBottom: '10px' }}><Link to="/usuarios">Usuários</Link></li>
-            <li style={{ marginBottom: '10px' }}><Link to="/configuracoes">Configurações</Link></li> {/* 2. Adicionar o link no menu */}
-            <li style={{ marginBottom: '10px' }}><Link to="/contabilidade">Contabilidade</Link></li> {/* 2. Adicionar o link no menu */}
+        <nav className="sidebar">
+          <h2 className="logo">Gestor LS</h2>
+          <ul>
+            <li><Link to="/" className="menu-item">Dashboard</Link></li>
+            <li><Link to="/processos" className="menu-item">Processos</Link></li>
+            <li><Link to="/cadastros" className="menu-item">Cadastros</Link></li>
+            <li><Link to="/usuarios" className="menu-item">Usuários</Link></li>
+            <li><Link to="/configuracoes" className="menu-item">Configurações</Link></li>
+            <li><Link to="/contabilidade" className="menu-item">Contabilidade</Link></li>
           </ul>
         </nav>
         <main className="content" style={{ flex: 1, padding: '20px' }}>

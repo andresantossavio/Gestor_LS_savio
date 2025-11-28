@@ -7,6 +7,7 @@ from sqlalchemy.orm import Session, joinedload
 from database.database import SessionLocal, engine, Base
 from database import crud_clientes, crud_processos, crud_tarefas, crud_andamentos, crud_anexos, crud_pagamentos, crud_usuarios, models # Import models first
 from backend import schemas # Then import schemas
+from backend import config_data # Import config data
 import time  # Add this import for timing
 
 # Ensure DB tables exist (uses existing SQLAlchemy Base)
@@ -14,7 +15,37 @@ import time  # Add this import for timing
 Base.metadata.create_all(bind=engine)
 
 app = FastAPI(title="GESTOR_LS API")
+
+# Routers
 api_router = APIRouter(prefix="/api")
+config_router = APIRouter(prefix="/api/config")
+
+
+# --- Config Endpoints ---
+@config_router.get("/ufs", response_model=list[str])
+def get_ufs():
+    return config_data.UFS
+
+@config_router.get("/tipos", response_model=list[str])
+def get_tipos():
+    return config_data.TIPOS_PROCESSO
+
+@config_router.get("/categorias", response_model=list[str])
+def get_categorias():
+    return config_data.CATEGORIAS_PROCESSO
+
+@config_router.get("/tribunais", response_model=list[str])
+def get_tribunais():
+    return config_data.TRIBUNAIS
+
+@config_router.get("/esferas", response_model=list[str])
+def get_esferas():
+    return config_data.ESFERAS_JUSTICA
+
+@config_router.get("/classes", response_model=dict[str, list[str]])
+def get_classes():
+    return config_data.CLASSES_JURIDICAS
+
 
 # Enable CORS for local development and frontend app
 app.add_middleware(
@@ -77,7 +108,7 @@ def listar_processos(db: Session = Depends(get_db)):
 
 @api_router.get("/processos/{processo_id}", response_model=schemas.Processo)
 def get_processo(processo_id: int, db: Session = Depends(get_db)):
-    p = crud_processos.buscar_processo_por_id(processo_id, db)
+    p = crud_processos.buscar_processo(db, processo_id)
     if not p:
         raise HTTPException(status_code=404, detail="Processo não encontrado")
     return p
@@ -247,3 +278,4 @@ def index():
 
 # register API router
 app.include_router(api_router)
+app.include_router(config_router)

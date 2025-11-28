@@ -6,9 +6,8 @@ const apiBase = '/api';
 export default function ProcessoForm({ processoParaEditar, onFormSubmit, onCancel }) {
   const isEditing = !!processoParaEditar?.id;
 
-  // Se estiver editando, garante que os campos classe/sub_classe não sejam 'null'
-  const processoInicial = isEditing ? { ...processoParaEditar, classe: processoParaEditar.classe || '', sub_classe: processoParaEditar.sub_classe || '' } : null;
-  const initialState = isEditing ? { ...processoParaEditar } : {
+  // Define um estado inicial "limpo" para garantir que todos os campos sejam strings controladas
+  const blankState = {
     numero: '',
     autor: '',
     reu: '',
@@ -27,7 +26,15 @@ export default function ProcessoForm({ processoParaEditar, onFormSubmit, onCance
     observacoes: '',
     cliente_id: ''
   };
-  const [formData, setFormData] = useState(processoInicial || initialState);
+
+  // Inicializa o estado do formulário
+  // Se estiver editando, mescla os dados do processo com o estado limpo
+  // Isso evita que valores `null` quebrem os inputs controlados
+  const [formData, setFormData] = useState({
+    ...blankState,
+    ...(processoParaEditar || {}),
+  });
+
   const [ufs, setUfs] = useState([]);
   const [tipos, setTipos] = useState([]);
   const [categorias, setCategorias] = useState([]);
@@ -250,7 +257,7 @@ export default function ProcessoForm({ processoParaEditar, onFormSubmit, onCance
 
 
   return (
-    <div style={{ border: '1px solid #ccc', padding: '20px', margin: '20px 0' }}>
+    <div className="card">
       <h3>{isEditing ? 'Editar Processo' : 'Novo Processo'}</h3>
       <form onSubmit={handleSubmit} style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
         <input name="numero" value={formData.numero} onChange={handleChange} placeholder="Número do Processo" />
@@ -339,8 +346,8 @@ export default function ProcessoForm({ processoParaEditar, onFormSubmit, onCance
         </select>
         <textarea name="observacoes" value={formData.observacoes} onChange={handleChange} placeholder="Observações" style={{ gridColumn: '1 / -1', minHeight: '80px' }} />
         <div>
-          <button type="submit">Salvar</button>
-          <button type="button" onClick={onCancel} style={{ marginLeft: '10px' }}>Cancelar</button>
+          <button type="submit" className="btn btn-primary">Salvar</button>
+          <button type="button" onClick={onCancel} className="btn btn-secondary" style={{ marginLeft: '10px' }}>Cancelar</button>
         </div>
       </form>
     </div>

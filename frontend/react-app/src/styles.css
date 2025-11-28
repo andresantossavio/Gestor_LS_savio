@@ -106,3 +106,34 @@ img {
   width: 100%;
   height: 100%;
 }
+
+/* --- Botões --- */
+.btn {
+  padding: 10px 15px;
+  border: none;
+  border-radius: 6px;
+  font-weight: bold;
+  cursor: pointer;
+  text-decoration: none;
+  display: inline-block;
+  text-align: center;
+  transition: background-color 0.2s ease-in-out, color 0.2s ease-in-out;
+}
+
+.btn-primary {
+  background-color: #FFC107; /* Amarelo 'âmbar' */
+  color: #000000;
+}
+
+.btn-primary:hover {
+  background-color: #FFA000; /* Amarelo mais escuro */
+}
+
+.btn-secondary {
+  background-color: #e2e6ea;
+  color: #333;
+}
+
+.btn-secondary:hover {
+  background-color: #d6dbdf;
+}

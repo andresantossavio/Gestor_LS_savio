@@ -32,14 +32,14 @@ export default function ProcessoDetalhe() {
     fetchProcesso();
   }, [fetchProcesso]);
 
-  if (loading) return <div>Carregando...</div>;
-  if (error) return <div>Erro: {error}</div>;
-  if (!processo) return <div>Processo não encontrado.</div>;
+  if (loading) return <div className="content">Carregando...</div>;
+  if (error) return <div className="content">Erro: {error}</div>;
+  if (!processo) return <div className="content">Processo não encontrado.</div>;
 
   // Se o formulário de edição deve ser exibido
   if (exibirForm) {
     return (
-      <div style={{ padding: 20 }}>
+      <div className="content">
         <Header title={`Editando Processo: ${processo.numero}`} />
         <ProcessoForm
           processoParaEditar={processo}
@@ -54,29 +54,23 @@ export default function ProcessoDetalhe() {
   }
 
   return (
-    <div style={{ padding: 20 }}>
-      <Link to="/processos">{"< Voltar para a lista de processos"}</Link>
+    <div className="content">
+      <Link to="/processos" className="btn btn-secondary" style={{ marginBottom: '20px' }}>
+        &larr; Voltar para a lista
+      </Link>
       
       {/* Cabeçalho com informações principais e ações */}
-      <div style={{ 
-        display: 'flex', 
-        justifyContent: 'space-between', 
-        alignItems: 'center', 
-        borderBottom: '2px solid #ccc', 
-        paddingBottom: '10px', 
-        marginBottom: '20px' 
-      }}>
-        <div>
-          <Header title={`Processo: ${processo.numero || 'Sem Número'}`} />
-          <p style={{ margin: 0 }}><strong>Cliente:</strong> {processo.cliente?.nome || 'N/A'}</p>
-          <p style={{ margin: 0 }}><strong>Autor:</strong> {processo.autor || 'N/A'}</p>
-          <p style={{ margin: 0 }}><strong>Réu:</strong> {processo.reu || 'N/A'}</p>
-        </div>
-        <div>
-          {/* Botão para ativar o modo de edição */}
+      <div className="card">
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+          <div>
+            <Header title={`Processo: ${processo.numero || 'Sem Número'}`} />
+            <p><strong>Cliente:</strong> {processo.cliente?.nome || 'N/A'}</p>
+            <p><strong>Autor:</strong> {processo.autor || 'N/A'}</p>
+            <p><strong>Réu:</strong> {processo.reu || 'N/A'}</p>
+          </div>
           <button 
             onClick={() => setExibirForm(true)}
-            style={{ display: 'flex', alignItems: 'center', gap: '5px' }}
+            className="btn btn-primary"
           >
             Editar Processo
           </button>
@@ -84,16 +78,22 @@ export default function ProcessoDetalhe() {
       </div>
 
       {/* Seções para Andamentos, Tarefas, etc. */}
-      <div style={{ marginTop: '30px', display: 'grid', gap: '20px' }}>
-        <section style={{ border: '1px solid #eee', padding: '15px', borderRadius: '5px' }}>
-          <h3>Andamentos</h3>
-        </section>
-        <section style={{ border: '1px solid #eee', padding: '15px', borderRadius: '5px' }}>
-          <h3>Tarefas</h3>
-        </section>
-        <section style={{ border: '1px solid #eee', padding: '15px', borderRadius: '5px' }}>
-          <h3>Pagamentos</h3>
-        </section>
+      <div className="card">
+        <h3>Andamentos</h3>
+        {/* Futuramente, listar os andamentos aqui */}
+        <p>Nenhum andamento registrado.</p>
+      </div>
+
+      <div className="card">
+        <h3>Tarefas</h3>
+        {/* Futuramente, listar as tarefas aqui */}
+        <p>Nenhuma tarefa registrada.</p>
+      </div>
+      
+      <div className="card">
+        <h3>Pagamentos</h3>
+        {/* Futuramente, listar os pagamentos aqui */}
+        <p>Nenhum pagamento registrado.</p>
       </div>
     </div>
   );

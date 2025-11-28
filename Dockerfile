@@ -1,14 +1,13 @@
 # 1) Build do frontend
 FROM node:20-alpine AS frontend-builder
-WORKDIR /app/frontend
-COPY frontend/react-app/package.json frontend/react-app/package-lock.json* ./
-COPY frontend/react-app/ ./react-app/
 WORKDIR /app/frontend/react-app
+COPY frontend/react-app/package.json frontend/react-app/package-lock.json* ./
 RUN npm install
+COPY frontend/react-app/ ./
 RUN npm run build
 
 # 2) Backend
-FROM python:3.12-slim
+FROM python:3.12-slim AS backend
 WORKDIR /app
 ENV PYTHONDONTWRITEBYTECODE=1
 ENV PYTHONUNBUFFERED=1
@@ -19,9 +18,12 @@ COPY requirements.txt ./
 RUN pip install --no-cache-dir -r requirements.txt
 COPY . /app/
 
-# Ajuste aqui: build ou dist
-COPY --from=frontend-builder /app/frontend/react-app/dist /app/frontend
-
+# O backend não precisa mais do frontend buildado, o Nginx vai lidar com isso.
 
 EXPOSE 8000
 CMD ["uvicorn", "backend.main:app", "--host", "0.0.0.0", "--port", "8000"]
+
+# 3) Nginx - Novo Estágio
+FROM nginx:alpine AS nginx-server
+COPY --from=frontend-builder /app/frontend/react-app/dist /usr/share/nginx/html
+COPY nginx.conf /etc/nginx/conf.d/default.conf

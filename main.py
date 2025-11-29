@@ -4,13 +4,14 @@ from contextlib import asynccontextmanager
 from fastapi.staticfiles import StaticFiles
 from enum import Enum
 from fastapi.middleware.cors import CORSMiddleware
-from typing import List
+from typing import List, Optional
 from pydantic import BaseModel, ConfigDict
+from datetime import date as date_type
 
 # Importa os componentes do banco de dados
 from database import models
 from database.database import SessionLocal, engine
-from database import crud_processos, crud_usuarios, crud_clientes, crud_pagamentos, crud_tarefas, crud_anexos, crud_andamentos, crud_contabilidade
+from database import crud_processos, crud_usuarios, crud_clientes, crud_pagamentos, crud_tarefas, crud_anexos, crud_andamentos, crud_contabilidade, crud_feriados, crud_municipios
 from backend import schemas
 
 
@@ -551,6 +552,109 @@ def api_criar_despesa(despesa: schemas.DespesaCreate, db: Session = Depends(get_
 def api_listar_despesas(skip: int = 0, limit: int = 100, db: Session = Depends(get_db)):
     despesas = crud_contabilidade.get_despesas(db, skip=skip, limit=limit)
     return despesas
+
+# --- Endpoints de Feriados ---
+
+@app.get("/api/feriados", response_model=List[schemas.FeriadoResponse])
+def listar_feriados(
+    tipo: Optional[str] = None,
+    uf: Optional[str] = None,
+    municipio_id: Optional[int] = None,
+    ano: Optional[int] = None,
+    data_inicio: Optional[date_type] = None,
+    data_fim: Optional[date_type] = None,
+    db: Session = Depends(get_db)
+):
+    """
+    Lista feriados com filtros opcionais.
+    Query params: tipo, uf, municipio_id, ano, data_inicio, data_fim
+    """
+    return crud_feriados.listar_feriados(
+        db, tipo=tipo, uf=uf, municipio_id=municipio_id,
+        ano=ano, data_inicio=data_inicio, data_fim=data_fim
+    )
+
+@app.get("/api/feriados/{feriado_id}", response_model=schemas.FeriadoResponse)
+def buscar_feriado(feriado_id: int, db: Session = Depends(get_db)):
+    """Busca um feriado por ID."""
+    feriado = crud_feriados.buscar_feriado_por_id(feriado_id, db)
+    if not feriado:
+        raise HTTPException(status_code=404, detail="Feriado não encontrado")
+    return feriado
+
+@app.post("/api/feriados", response_model=schemas.FeriadoResponse)
+def criar_feriado(feriado: schemas.FeriadoCreate, db: Session = Depends(get_db)):
+    """Cria um novo feriado."""
+    try:
+        return crud_feriados.criar_feriado(
+            db=db,
+            nome=feriado.nome,
+            data=feriado.data,
+            tipo=feriado.tipo,
+            uf=feriado.uf,
+            municipio_id=feriado.municipio_id,
+            recorrente_anual=feriado.recorrente_anual
+        )
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+@app.put("/api/feriados/{feriado_id}", response_model=schemas.FeriadoResponse)
+def atualizar_feriado(feriado_id: int, feriado: schemas.FeriadoUpdate, db: Session = Depends(get_db)):
+    """Atualiza um feriado existente."""
+    try:
+        updated = crud_feriados.atualizar_feriado(
+            feriado_id, db, 
+            nome=feriado.nome,
+            data=feriado.data,
+            tipo=feriado.tipo,
+            uf=feriado.uf,
+            municipio_id=feriado.municipio_id,
+            recorrente_anual=feriado.recorrente_anual
+        )
+        if not updated:
+            raise HTTPException(status_code=404, detail="Feriado não encontrado")
+        return updated
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+@app.delete("/api/feriados/{feriado_id}", status_code=204)
+def deletar_feriado(feriado_id: int, db: Session = Depends(get_db)):
+    """Deleta um feriado."""
+    sucesso = crud_feriados.deletar_feriado(feriado_id, db)
+    if not sucesso:
+        raise HTTPException(status_code=404, detail="Feriado não encontrado")
+
+# --- Endpoint de UFs para configuração ---
+
+@app.get("/api/config/ufs")
+def get_ufs():
+    """Retorna lista de UFs brasileiras."""
+    return ["AC", "AL", "AP", "AM", "BA", "CE", "DF", "ES", "GO", "MA", 
+            "MT", "MS", "MG", "PA", "PB", "PR", "PE", "PI", "RJ", "RN", 
+            "RS", "RO", "RR", "SC", "SP", "SE", "TO"]
+
+# --- Endpoints de Municípios ---
+
+@app.get("/api/municipios", response_model=List[schemas.MunicipioResponse])
+def listar_municipios(db: Session = Depends(get_db)):
+    """Lista todos os municípios cadastrados."""
+    return crud_municipios.listar_municipios(db)
+
+@app.get("/api/municipios/uf/{uf}", response_model=List[schemas.MunicipioResponse])
+def listar_municipios_por_uf(uf: str, db: Session = Depends(get_db)):
+    """Lista municípios de uma UF específica."""
+    municipios = crud_municipios.listar_municipios_por_uf(uf, db)
+    if not municipios:
+        raise HTTPException(status_code=404, detail=f"Nenhum município encontrado para UF: {uf}")
+    return municipios
+
+@app.get("/api/municipios/{municipio_id}", response_model=schemas.MunicipioResponse)
+def buscar_municipio(municipio_id: int, db: Session = Depends(get_db)):
+    """Busca um município por ID."""
+    municipio = crud_municipios.buscar_municipio_por_id(municipio_id, db)
+    if not municipio:
+        raise HTTPException(status_code=404, detail="Município não encontrado")
+    return municipio
 
 # --- Servir o Frontend (React) ---
 # Esta linha faz com que o FastAPI sirva os arquivos da pasta 'build' do seu app React.

@@ -12,6 +12,9 @@ import ClienteDetalhe from './pages/ClienteDetalhe'
 import Cadastros from './pages/Cadastros'
 import Usuarios from './pages/Usuarios'
 import Config from './pages/Config'
+import ConfigFeriados from './pages/ConfigFeriados'
+import Tarefas from './pages/Tarefas'
+import DashboardTarefas from './pages/DashboardTarefas'
 import Contabilidade from './pages/Contabilidade'
 import EntradaForm from './pages/EntradaForm'
 import DespesaForm from './pages/DespesaForm'
@@ -39,13 +42,24 @@ function App() {
             <Route path="/clientes" element={<Clientes />} />
             <Route path="/clientes/:clienteId" element={<ClienteDetalhe />} />
             <Route path="/usuarios" element={<Usuarios />} />
+            
+            {/* Rotas de Tarefas */}
+            <Route path="/tarefas/dashboard" element={<DashboardTarefas />} />
+            <Route path="/tarefas" element={<Tarefas />} />
+            
+            {/* Rotas de Configuração */}
+            <Route path="/configuracoes/feriados" element={<ConfigFeriados />} />
+            <Route path="/configuracoes" element={<Config />} />
             <Route path="/config" element={<Config />} />
-            <Route path="/contabilidade" element={<Contabilidade />} />
+            
+            {/* Rotas de Contabilidade */}
             <Route path="/contabilidade/entradas/nova" element={<EntradaForm />} />
             <Route path="/contabilidade/despesas/nova" element={<DespesaForm />} />
             <Route path="/contabilidade/socios" element={<SocioPage />} />
             <Route path="/contabilidade/dre" element={<DRE />} />
             <Route path="/contabilidade/config-simples" element={<ConfigSimples />} />
+            <Route path="/contabilidade" element={<Contabilidade />} />
+            
             <Route path="*" element={<h1>404: Página Não Encontrada</h1>} />
           </Routes>
         </main>

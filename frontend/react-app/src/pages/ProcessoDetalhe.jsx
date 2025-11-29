@@ -2,15 +2,19 @@ import React, { useEffect, useState, useCallback } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import Header from '../components/Header';
 import ProcessoForm from '../components/ProcessoForm'; // Importa o formulário
+import CalendarioProcesso from '../components/CalendarioProcesso';
+import TarefaForm from '../components/TarefaForm';
 
 const apiBase = '/api';
 
 export default function ProcessoDetalhe() {
   const { processoId } = useParams(); // Pega o ID da URL
   const [processo, setProcesso] = useState(null);
+  const [tarefas, setTarefas] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [exibirForm, setExibirForm] = useState(false); // Estado para exibir o formulário
+  const [exibirFormTarefa, setExibirFormTarefa] = useState(false); // Estado para exibir formulário de tarefa
 
   const fetchProcesso = useCallback(async () => {
     try {
@@ -28,9 +32,25 @@ export default function ProcessoDetalhe() {
     }
   }, [processoId]);
 
+  const fetchTarefas = useCallback(async () => {
+    try {
+      // Buscar tarefas do processo - usando filtros da API
+      const res = await fetch(`${apiBase}/tarefas/filtros?processo_id=${processoId}`);
+      if (!res.ok) {
+        console.error('Erro ao buscar tarefas');
+        return;
+      }
+      const data = await res.json();
+      setTarefas(data);
+    } catch (err) {
+      console.error('Erro ao buscar tarefas:', err);
+    }
+  }, [processoId]);
+
   useEffect(() => {
     fetchProcesso();
-  }, [fetchProcesso]);
+    fetchTarefas();
+  }, [fetchProcesso, fetchTarefas]);
 
   if (loading) return <div className="content">Carregando...</div>;
   if (error) return <div className="content">Erro: {error}</div>;
@@ -90,8 +110,7 @@ export default function ProcessoDetalhe() {
           {processo.sub_classe && <div><strong>Sub-classe:</strong> {processo.sub_classe}</div>}
           {processo.esfera_justica && <div><strong>Esfera de Justiça:</strong> {processo.esfera_justica}</div>}
           {processo.tribunal_originario && <div><strong>Tribunal Originário:</strong> {processo.tribunal_originario}</div>}
-          {processo.uf && <div><strong>UF:</strong> {processo.uf}</div>}
-          {processo.comarca && <div><strong>Comarca:</strong> {processo.comarca}</div>}
+          {processo.municipio && <div><strong>Município:</strong> {processo.municipio.nome} - {processo.municipio.uf}</div>}
           {processo.vara && <div><strong>Vara:</strong> {processo.vara}</div>}
           {processo.data_abertura && <div><strong>Data de Abertura:</strong> {processo.data_abertura}</div>}
           {processo.data_fechamento && <div><strong>Data de Fechamento:</strong> {processo.data_fechamento}</div>}
@@ -112,16 +131,58 @@ export default function ProcessoDetalhe() {
       </div>
 
       <div className="card">
-        <h3>Tarefas</h3>
-        {/* Futuramente, listar as tarefas aqui */}
-        <p>Nenhuma tarefa registrada.</p>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '15px' }}>
+          <h3 style={{ margin: 0 }}>Tarefas</h3>
+          <button 
+            onClick={() => setExibirFormTarefa(true)}
+            className="btn btn-primary"
+          >
+            + Nova Tarefa
+          </button>
+        </div>
+        {tarefas.length === 0 ? (
+          <p>Nenhuma tarefa registrada.</p>
+        ) : (
+          <ul>
+            {tarefas.map(tarefa => (
+              <li key={tarefa.id}>
+                <strong>{tarefa.tipo_tarefa?.nome || 'Tarefa'}</strong> 
+                {tarefa.prazo_fatal && ` - Prazo: ${new Date(tarefa.prazo_fatal + 'T00:00:00').toLocaleDateString('pt-BR')}`}
+                {tarefa.status && ` - Status: ${tarefa.status}`}
+              </li>
+            ))}
+          </ul>
+        )}
       </div>
+
+      {/* Calendário do Processo */}
+      {processo?.municipio_id && (
+        <div>
+          <h3 style={{ marginTop: 20, marginBottom: 15 }}>Calendário de Prazos</h3>
+          <CalendarioProcesso 
+            municipioId={processo.municipio_id} 
+            tarefas={tarefas}
+          />
+        </div>
+      )}
       
       <div className="card">
         <h3>Pagamentos</h3>
         {/* Futuramente, listar os pagamentos aqui */}
         <p>Nenhum pagamento registrado.</p>
       </div>
+
+      {/* Modal de Criar Tarefa */}
+      {exibirFormTarefa && (
+        <TarefaForm
+          processoId={processoId}
+          onClose={() => setExibirFormTarefa(false)}
+          onFormSubmit={() => {
+            setExibirFormTarefa(false);
+            fetchTarefas(); // Recarrega as tarefas
+          }}
+        />
+      )}
     </div>
   );
 }

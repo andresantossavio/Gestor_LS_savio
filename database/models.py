@@ -7,7 +7,10 @@ from sqlalchemy import (
     Date,
     DateTime,
     ForeignKey,
-    Text
+    Text,
+    UniqueConstraint,
+    Index,
+    JSON
 )
 from sqlalchemy.orm import relationship
 from database.database import Base
@@ -51,6 +54,45 @@ class Cliente(Base):
     cep = Column(String)
     processos = relationship("Processo", back_populates="cliente", cascade="all, delete-orphan")
 
+class Municipio(Base):
+    __tablename__ = "municipios"
+    __table_args__ = (
+        UniqueConstraint('nome', 'uf', name='uq_municipio_nome_uf'),
+        Index('idx_municipio_uf', 'uf'),
+        Index('idx_municipio_codigo_ibge', 'codigo_ibge'),
+    )
+
+    id = Column(Integer, primary_key=True, index=True)
+    nome = Column(String(200), nullable=False)
+    uf = Column(String(2), nullable=False)
+    codigo_ibge = Column(String(7), unique=True, nullable=False)
+    
+    # Relationships
+    processos = relationship("Processo", back_populates="municipio")
+    feriados = relationship("Feriado", back_populates="municipio")
+
+class Feriado(Base):
+    __tablename__ = "feriados"
+    __table_args__ = (
+        Index('idx_feriado_data', 'data'),
+        Index('idx_feriado_tipo', 'tipo'),
+        Index('idx_feriado_municipio', 'municipio_id'),
+    )
+
+    id = Column(Integer, primary_key=True, index=True)
+    data = Column(Date, nullable=False)
+    nome = Column(String(200), nullable=False)
+    tipo = Column(String(20), nullable=False)  # 'nacional', 'estadual', 'municipal'
+    uf = Column(String(2), nullable=True)  # Obrigatório se tipo='estadual'
+    municipio_id = Column(Integer, ForeignKey("municipios.id"), nullable=True)  # Obrigatório se tipo='municipal'
+    recorrente = Column(Boolean, default=False, nullable=False)  # Se repete anualmente
+    criado_por = Column(Integer, ForeignKey("usuarios.id"), nullable=True)
+    criado_em = Column(DateTime, default=datetime.utcnow)
+    
+    # Relationships
+    municipio = relationship("Municipio", back_populates="feriados")
+    criado_por_usuario = relationship("Usuario")
+
 class Processo(Base):
     __tablename__ = "processos"
 
@@ -58,8 +100,7 @@ class Processo(Base):
     numero = Column(String)
     autor = Column(String)
     reu = Column(String)
-    uf = Column(String)
-    comarca = Column(String)
+    municipio_id = Column(Integer, ForeignKey("municipios.id"), nullable=True)  # Substituindo uf/comarca/cidade
     vara = Column(String)
     fase = Column(String)
     categoria = Column(String, nullable=True) # Ex: Comum, Originário
@@ -75,6 +116,7 @@ class Processo(Base):
     data_fechamento = Column(String)
     cliente_id = Column(Integer, ForeignKey("clientes.id"))
     cliente = relationship("Cliente", back_populates="processos")
+    municipio = relationship("Municipio", back_populates="processos")
     andamentos = relationship("Andamento", cascade="all, delete-orphan")
     tarefas = relationship("Tarefa", cascade="all, delete-orphan")
     anexos = relationship("Anexo", cascade="all, delete-orphan")
@@ -131,20 +173,44 @@ class Andamento(Base):
 
 class Tarefa(Base):
     __tablename__ = "tarefas"
+    __table_args__ = (
+        Index('idx_tarefa_prazo_fatal', 'prazo_fatal'),
+        Index('idx_tarefa_status', 'status'),
+        Index('idx_tarefa_responsavel', 'responsavel_id'),
+    )
 
     id = Column(Integer, primary_key=True)
-    processo_id = Column(Integer, ForeignKey("processos.id"))
+    processo_id = Column(Integer, ForeignKey("processos.id"), nullable=True)
     tipo_tarefa_id = Column(Integer, ForeignKey("tipos_tarefa.id"), nullable=False)
-    descricao_complementar = Column(Text, nullable=True) # Para notas adicionais do usuário
-    prazo = Column(Date, nullable=True)
+    descricao_complementar = Column(Text, nullable=True)
+    
+    # Campos de prazos
+    prazo = Column(Date, nullable=True)  # Mantido para compatibilidade
+    prazo_administrativo = Column(Date, nullable=True)
+    prazo_fatal = Column(Date, nullable=True)
+    
+    # Campos de workflow
+    etapa_workflow_atual = Column(String(50), default="analise_pendente")
+    workflow_historico = Column(JSON, nullable=True)  # [{etapa, usuario_id, usuario_nome, timestamp, acao}]
+    
+    # Campos específicos de intimação
+    conteudo_intimacao = Column(Text, nullable=True)
+    classificacao_intimacao = Column(String(100), nullable=True)
+    conteudo_decisao = Column(Text, nullable=True)
+    
+    # Relacionamento pai-filho para tarefas derivadas
+    tarefa_origem_id = Column(Integer, ForeignKey("tarefas.id"), nullable=True)
+    
     responsavel_id = Column(Integer, ForeignKey("usuarios.id"), nullable=True)
     status = Column(String(40), default="pendente")
     criado_em = Column(DateTime, default=datetime.utcnow)
     atualizado_em = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
     
-    processo = relationship("Processo")
+    # Relationships
+    processo = relationship("Processo", back_populates="tarefas")
     tipo_tarefa = relationship("TipoTarefa")
     responsavel = relationship("Usuario", back_populates="tarefas")
+    tarefa_origem = relationship("Tarefa", remote_side=[id], backref="tarefas_derivadas")
 
 class Anexo(Base):
     __tablename__ = "anexos"
@@ -175,6 +241,19 @@ class TipoTarefa(Base):
     id = Column(Integer, primary_key=True)
     nome = Column(String(150), unique=True, nullable=False)
     descricao_padrao = Column(Text, nullable=True)
+    
+    # Relationship
+    workflow_template = relationship("WorkflowTemplate", back_populates="tipo_tarefa", uselist=False)
+
+class WorkflowTemplate(Base):
+    __tablename__ = "workflow_templates"
+
+    id = Column(Integer, primary_key=True, index=True)
+    tipo_tarefa_id = Column(Integer, ForeignKey("tipos_tarefa.id"), unique=True, nullable=False)
+    etapas = Column(JSON, nullable=False)  # [{nome, ordem, acao_label, pode_criar_tarefa}]
+    
+    # Relationship
+    tipo_tarefa = relationship("TipoTarefa", back_populates="workflow_template")
 
 
 # Modelos de Contabilidade

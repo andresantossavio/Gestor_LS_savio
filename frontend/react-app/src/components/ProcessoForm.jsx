@@ -12,7 +12,7 @@ export default function ProcessoForm({ processoParaEditar, onFormSubmit, onCance
     autor: '',
     reu: '',
     uf: '',
-    comarca: '',
+    municipio_id: '',
     vara: '',
     fase: '',
     esfera_justica: '',
@@ -37,6 +37,7 @@ export default function ProcessoForm({ processoParaEditar, onFormSubmit, onCance
   });
 
   const [ufs, setUfs] = useState([]);
+  const [municipios, setMunicipios] = useState([]);
   const [tipos, setTipos] = useState([]);
   const [categorias, setCategorias] = useState([]);
   const [tribunais, setTribunais] = useState([]);
@@ -75,6 +76,26 @@ export default function ProcessoForm({ processoParaEditar, onFormSubmit, onCance
     fetchConfigData();
   }, []);
 
+  // Carregar municípios quando UF for selecionada
+  useEffect(() => {
+    if (formData.uf) {
+      const fetchMunicipios = async () => {
+        try {
+          const res = await fetch(`${apiBase}/municipios/uf/${formData.uf}`);
+          if (!res.ok) throw new Error('Falha ao buscar municípios');
+          const data = await res.json();
+          setMunicipios(data);
+        } catch (err) {
+          console.error("Erro ao buscar municípios:", err);
+          setMunicipios([]);
+        }
+      };
+      fetchMunicipios();
+    } else {
+      setMunicipios([]);
+    }
+  }, [formData.uf]);
+
   const handleChange = (e) => {
     const { name, value } = e.target;
     const newFormData = { ...formData, [name]: value };
@@ -83,7 +104,7 @@ export default function ProcessoForm({ processoParaEditar, onFormSubmit, onCance
     if (name === 'categoria' && value === 'Originário') {
       // Limpa os campos de 'Comum'
       newFormData.uf = '';
-      newFormData.comarca = '';
+      newFormData.municipio_id = '';
       newFormData.vara = '';
       // Define o tipo como Judicial e limpa classe/sub-classe
       newFormData.tipo = 'Judicial';
@@ -96,6 +117,11 @@ export default function ProcessoForm({ processoParaEditar, onFormSubmit, onCance
       // Limpa os campos de 'Originário' e reseta o tipo
       newFormData.tribunal_originario = '';
       newFormData.tipo = '';
+    }
+
+    // Se a UF mudar, limpa o município
+    if (name === 'uf') {
+      newFormData.municipio_id = '';
     }
 
     // NOVA REGRA: Se a classe for Criminal, o tipo é sempre Judicial.
@@ -354,11 +380,16 @@ export default function ProcessoForm({ processoParaEditar, onFormSubmit, onCance
               <option value="">Selecione a UF</option>
               {ufs.map(uf => <option key={uf} value={uf}>{uf}</option>)}
             </select>
+            {formData.uf && (
+              <select name="municipio_id" value={formData.municipio_id} onChange={handleChange} required>
+                <option value="">Selecione o Município</option>
+                {municipios.map(m => <option key={m.id} value={m.id}>{m.nome}</option>)}
+              </select>
+            )}
             <select name="tipo" value={formData.tipo} onChange={handleChange} disabled={formData.classe === 'Criminal'}>
               <option value="">Selecione o Tipo</option>
               {tipos.map(t => <option key={t} value={t}>{t}</option>)}
             </select>
-            <input name="comarca" value={formData.comarca} onChange={handleChange} placeholder="Comarca" />
             <input name="vara" value={formData.vara} onChange={handleChange} placeholder="Vara/Juízo" />
             <select name="classe" value={formData.classe} onChange={handleChange}>
               <option value="">Selecione a Classe</option>

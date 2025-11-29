@@ -4,11 +4,14 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from pathlib import Path
 from sqlalchemy.orm import Session, joinedload
+from typing import Optional, List
 from database.database import SessionLocal, engine, Base
-from database import crud_clientes, crud_processos, crud_tarefas, crud_andamentos, crud_anexos, crud_pagamentos, crud_usuarios, crud_contabilidade, models # Import models first
+from database import crud_clientes, crud_processos, crud_tarefas, crud_andamentos, crud_anexos, crud_pagamentos, crud_usuarios, crud_contabilidade, crud_municipios, crud_feriados, models # Import models first
 from .import_contabilidade import carregar_csv_contabilidade
 from backend import schemas # Then import schemas
 from backend import config_data # Import config data
+from utils import prazos, exportacao  # Import utils
+from datetime import date as date_type, datetime
 import time  # Add this import for timing
 
 # Ensure DB tables exist (uses existing SQLAlchemy Base)
@@ -490,6 +493,426 @@ def atualizar_usuario_api(usuario_id: int, usuario: schemas.UsuarioUpdate, db: S
 def deletar_usuario_api(usuario_id: int, db: Session = Depends(get_db)):
     crud_usuarios.deletar_usuario(usuario_id, db)
     return {"status": "ok"}
+
+
+# ==================== MUNICÍPIOS ENDPOINTS ====================
+
+@api_router.get("/municipios", response_model=List[schemas.MunicipioResponse])
+def listar_municipios(db: Session = Depends(get_db)):
+    """Lista todos os municípios cadastrados."""
+    return crud_municipios.listar_municipios(db)
+
+
+@api_router.get("/municipios/uf/{uf}", response_model=List[schemas.MunicipioResponse])
+def listar_municipios_por_uf(uf: str, db: Session = Depends(get_db)):
+    """Lista municípios de uma UF específica."""
+    municipios = crud_municipios.listar_municipios_por_uf(uf, db)
+    if not municipios:
+        raise HTTPException(status_code=404, detail=f"Nenhum município encontrado para UF: {uf}")
+    return municipios
+
+
+@api_router.get("/municipios/{municipio_id}", response_model=schemas.MunicipioResponse)
+def buscar_municipio(municipio_id: int, db: Session = Depends(get_db)):
+    """Busca um município por ID."""
+    municipio = crud_municipios.buscar_municipio_por_id(municipio_id, db)
+    if not municipio:
+        raise HTTPException(status_code=404, detail="Município não encontrado")
+    return municipio
+
+
+# ==================== FERIADOS ENDPOINTS ====================
+
+@api_router.get("/feriados", response_model=List[schemas.FeriadoResponse])
+def listar_feriados(
+    tipo: Optional[str] = None,
+    uf: Optional[str] = None,
+    municipio_id: Optional[int] = None,
+    ano: Optional[int] = None,
+    data_inicio: Optional[date_type] = None,
+    data_fim: Optional[date_type] = None,
+    db: Session = Depends(get_db)
+):
+    """
+    Lista feriados com filtros opcionais.
+    Query params: tipo, uf, municipio_id, ano, data_inicio, data_fim
+    """
+    return crud_feriados.listar_feriados(
+        db, tipo=tipo, uf=uf, municipio_id=municipio_id,
+        ano=ano, data_inicio=data_inicio, data_fim=data_fim
+    )
+
+
+@api_router.get("/feriados/{feriado_id}", response_model=schemas.FeriadoResponse)
+def buscar_feriado(feriado_id: int, db: Session = Depends(get_db)):
+    """Busca um feriado por ID."""
+    feriado = crud_feriados.buscar_feriado_por_id(feriado_id, db)
+    if not feriado:
+        raise HTTPException(status_code=404, detail="Feriado não encontrado")
+    return feriado
+
+
+@api_router.post("/feriados", response_model=schemas.FeriadoResponse)
+def criar_feriado(feriado: schemas.FeriadoCreate, db: Session = Depends(get_db)):
+    """Cria um novo feriado."""
+    try:
+        return crud_feriados.criar_feriado(
+            db=db,
+            data=feriado.data,
+            nome=feriado.nome,
+            tipo=feriado.tipo.value,
+            uf=feriado.uf,
+            municipio_id=feriado.municipio_id,
+            recorrente=feriado.recorrente,
+            criado_por=None  # TODO: pegar do usuário logado
+        )
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+@api_router.put("/feriados/{feriado_id}", response_model=schemas.FeriadoResponse)
+def atualizar_feriado(feriado_id: int, feriado: schemas.FeriadoUpdate, db: Session = Depends(get_db)):
+    """Atualiza um feriado existente."""
+    try:
+        updated = crud_feriados.atualizar_feriado(
+            feriado_id, db, **feriado.model_dump(exclude_unset=True)
+        )
+        if not updated:
+            raise HTTPException(status_code=404, detail="Feriado não encontrado")
+        return updated
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+@api_router.delete("/feriados/{feriado_id}")
+def deletar_feriado(feriado_id: int, db: Session = Depends(get_db)):
+    """Deleta um feriado."""
+    sucesso = crud_feriados.deletar_feriado(feriado_id, db)
+    if not sucesso:
+        raise HTTPException(status_code=404, detail="Feriado não encontrado")
+    return {"status": "ok"}
+
+
+@api_router.get("/feriados/calendario/{ano}/{mes}/{municipio_id}", response_model=List[schemas.CalendarioDiaResponse])
+def obter_calendario_mes(
+    ano: int,
+    mes: int,
+    municipio_id: int = None,
+    db: Session = Depends(get_db)
+):
+    """
+    Retorna informações de cada dia do mês para renderizar calendário.
+    Indica dias úteis, feriados e fins de semana.
+    """
+    if mes < 1 or mes > 12:
+        raise HTTPException(status_code=400, detail="Mês deve estar entre 1 e 12")
+    
+    return crud_feriados.obter_calendario_mes(ano, mes, municipio_id, db)
+
+
+# ==================== TIPOS DE TAREFA E ANDAMENTO ====================
+
+@api_router.get("/tipos-tarefa", response_model=List[schemas.TipoTarefaResponse])
+def listar_tipos_tarefa(db: Session = Depends(get_db)):
+    """Lista todos os tipos de tarefa disponíveis."""
+    from database.models import TipoTarefa
+    tipos = db.query(TipoTarefa).all()
+    return tipos
+
+
+@api_router.get("/tipos-andamento", response_model=List[schemas.TipoAndamentoResponse])
+def listar_tipos_andamento(db: Session = Depends(get_db)):
+    """Lista todos os tipos de andamento disponíveis."""
+    from database.models import TipoAndamento
+    tipos = db.query(TipoAndamento).all()
+    return tipos
+
+
+# ==================== TAREFAS COM WORKFLOW ENDPOINTS ====================
+
+@api_router.post("/processos/{processo_id}/tarefas", response_model=schemas.TarefaResponse)
+def criar_tarefa_processo(
+    processo_id: int,
+    tarefa: schemas.TarefaCreate,
+    db: Session = Depends(get_db)
+):
+    """Cria uma nova tarefa manualmente para um processo."""
+    # Valida se processo existe
+    processo = crud_processos.buscar_processo(db, processo_id)
+    if not processo:
+        raise HTTPException(status_code=404, detail="Processo não encontrado")
+    
+    # Cria tarefa
+    nova_tarefa = crud_tarefas.criar_tarefa(
+        db=db,
+        processo_id=processo_id,
+        tipo_tarefa_id=tarefa.tipo_tarefa_id,
+        descricao_complementar=tarefa.descricao_complementar,
+        prazo=tarefa.prazo_fatal,
+        responsavel_id=tarefa.responsavel_id,
+        status=tarefa.status
+    )
+    
+    # Atualiza prazos se fornecidos
+    if tarefa.prazo_administrativo or tarefa.prazo_fatal:
+        crud_tarefas.atualizar_tarefa(
+            nova_tarefa.id,
+            db,
+            prazo_administrativo=tarefa.prazo_administrativo,
+            prazo_fatal=tarefa.prazo_fatal
+        )
+    
+    db.refresh(nova_tarefa)
+    return nova_tarefa
+
+
+@api_router.post("/processos/{processo_id}/tarefas/intimacao", response_model=schemas.TarefaResponse)
+def criar_tarefa_intimacao(
+    processo_id: int,
+    tarefa: schemas.TarefaIntimacaoCreate,
+    db: Session = Depends(get_db)
+):
+    """
+    Cria tarefa de análise de intimação com cálculo automático de prazos.
+    Prazo administrativo: +2 dias úteis
+    Prazo fatal: +3 dias úteis
+    """
+    # Valida processo
+    processo = crud_processos.buscar_processo(db, processo_id)
+    if not processo:
+        raise HTTPException(status_code=404, detail="Processo não encontrado")
+    
+    # Busca tipo de tarefa "Análise de Intimação"
+    from database.models import TipoTarefa
+    tipo = db.query(TipoTarefa).filter(TipoTarefa.nome == "Análise de Intimação").first()
+    if not tipo:
+        raise HTTPException(status_code=400, detail="Tipo 'Análise de Intimação' não encontrado")
+    
+    # Calcula prazos
+    hoje = date_type.today()
+    municipio_id = processo.municipio_id if processo.municipio_id else None
+    
+    prazo_admin = prazos.adicionar_dias_uteis(hoje, 2, municipio_id, db)
+    prazo_fatal_calc = prazos.adicionar_dias_uteis(hoje, 3, municipio_id, db)
+    
+    # Gera nome contextual baseado na fase
+    fase = processo.fase or "Inicial"
+    descricao = f"Análise de Intimação {fase}"
+    
+    # Cria tarefa
+    nova_tarefa = models.Tarefa(
+        processo_id=processo_id,
+        tipo_tarefa_id=tipo.id,
+        descricao_complementar=descricao,
+        conteudo_intimacao=tarefa.conteudo_intimacao,
+        responsavel_id=tarefa.responsavel_id,
+        prazo_administrativo=prazo_admin,
+        prazo_fatal=prazo_fatal_calc,
+        prazo=prazo_fatal_calc,
+        etapa_workflow_atual="analise_pendente",
+        status="pendente"
+    )
+    
+    db.add(nova_tarefa)
+    db.commit()
+    db.refresh(nova_tarefa)
+    return nova_tarefa
+
+
+@api_router.patch("/tarefas/{tarefa_id}/classificar", response_model=schemas.TarefaResponse)
+def classificar_intimacao(
+    tarefa_id: int,
+    classificacao: schemas.TarefaIntimacaoClassificar,
+    usuario_id: int = 1,  # TODO: pegar do token de autenticação
+    db: Session = Depends(get_db)
+):
+    """
+    Classifica uma intimação e cria andamento/tarefa derivada conforme necessário.
+    """
+    # Busca tarefa
+    tarefa = crud_tarefas.buscar_tarefa(tarefa_id, db)
+    if not tarefa:
+        raise HTTPException(status_code=404, detail="Tarefa não encontrada")
+    
+    # Valida permissão (apenas responsável pode classificar)
+    if tarefa.responsavel_id != usuario_id:
+        raise HTTPException(status_code=403, detail="Apenas o responsável pode classificar esta intimação")
+    
+    # Atualiza classificação e conteúdo
+    tarefa.classificacao_intimacao = classificacao.classificacao_intimacao.value
+    if classificacao.conteudo_decisao:
+        tarefa.conteudo_decisao = classificacao.conteudo_decisao
+    
+    # Cria andamento apenas para "Decisão Interlocutória" e "Sentença"
+    if classificacao.classificacao_intimacao in [
+        schemas.ClassificacaoIntimacao.DECISAO_INTERLOCUTORIA,
+        schemas.ClassificacaoIntimacao.SENTENCA
+    ]:
+        from database.models import TipoAndamento
+        tipo_andamento = db.query(TipoAndamento).filter(
+            TipoAndamento.nome == classificacao.classificacao_intimacao.value
+        ).first()
+        
+        if tipo_andamento:
+            novo_andamento = models.Andamento(
+                processo_id=tarefa.processo_id,
+                tipo_andamento_id=tipo_andamento.id,
+                descricao_complementar=classificacao.conteudo_decisao,
+                data=date_type.today(),
+                criado_por=usuario_id
+            )
+            db.add(novo_andamento)
+    
+    # Cria tarefa derivada se solicitado
+    if classificacao.criar_tarefa_derivada and classificacao.tipo_tarefa_derivada_id:
+        if not classificacao.responsavel_derivado_id:
+            raise HTTPException(status_code=400, detail="Responsável da tarefa derivada é obrigatório")
+        
+        # Para Petição e Recurso, prazo fatal é obrigatório
+        from database.models import TipoTarefa
+        tipo_derivado = db.query(TipoTarefa).filter(TipoTarefa.id == classificacao.tipo_tarefa_derivada_id).first()
+        
+        prazo_admin_derivado = None
+        prazo_fatal_derivado = None
+        
+        if tipo_derivado and tipo_derivado.nome in ["Petição", "Recurso"]:
+            if not classificacao.prazo_fatal_derivada:
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"Prazo fatal é obrigatório para tarefa do tipo '{tipo_derivado.nome}'"
+                )
+            # Calcula prazo administrativo: 2 dias úteis antes do prazo fatal
+            prazo_fatal_derivado = classificacao.prazo_fatal_derivada
+            municipio_id = tarefa.processo.municipio_id if tarefa.processo else None
+            prazo_admin_derivado = prazos.subtrair_dias_uteis(prazo_fatal_derivado, 2, municipio_id, db)
+        else:
+            prazo_fatal_derivado = classificacao.prazo_fatal_derivada
+            if prazo_fatal_derivado:
+                municipio_id = tarefa.processo.municipio_id if tarefa.processo else None
+                prazo_admin_derivado = prazos.subtrair_dias_uteis(prazo_fatal_derivado, 2, municipio_id, db)
+        
+        # Cria tarefa derivada
+        crud_tarefas.criar_tarefa_derivada(
+            tarefa_origem_id=tarefa_id,
+            tipo_tarefa_id=classificacao.tipo_tarefa_derivada_id,
+            processo_id=tarefa.processo_id,
+            responsavel_id=classificacao.responsavel_derivado_id,
+            prazo_administrativo=prazo_admin_derivado,
+            prazo_fatal=prazo_fatal_derivado,
+            descricao_complementar=f"Derivada de: {tarefa.tipo_tarefa.nome if tarefa.tipo_tarefa else 'Tarefa'}",
+            db=db
+        )
+    
+    # Avança workflow para "intimacao_classificada"
+    tarefa.etapa_workflow_atual = "intimacao_classificada"
+    
+    # Adiciona ao histórico
+    historico = tarefa.workflow_historico or []
+    historico.append({
+        "etapa_anterior": "analise_pendente",
+        "etapa_nova": "intimacao_classificada",
+        "usuario_id": usuario_id,
+        "usuario_nome": "Usuário",  # TODO: buscar nome real
+        "timestamp": datetime.utcnow().isoformat(),
+        "acao": f"Intimação classificada como: {classificacao.classificacao_intimacao.value}"
+    })
+    tarefa.workflow_historico = historico
+    
+    db.commit()
+    db.refresh(tarefa)
+    return tarefa
+
+
+@api_router.patch("/tarefas/{tarefa_id}/workflow/avancar", response_model=schemas.TarefaResponse)
+def avancar_workflow(
+    tarefa_id: int,
+    avancar: schemas.TarefaWorkflowAvancar,
+    usuario_id: int = 1,  # TODO: pegar do token
+    db: Session = Depends(get_db)
+):
+    """Avança o workflow de uma tarefa para próxima etapa."""
+    tarefa = crud_tarefas.buscar_tarefa(tarefa_id, db)
+    if not tarefa:
+        raise HTTPException(status_code=404, detail="Tarefa não encontrada")
+    
+    # Busca nome do usuário
+    usuario = crud_usuarios.buscar_usuario(db, usuario_id)
+    usuario_nome = usuario.nome if usuario else "Desconhecido"
+    
+    try:
+        tarefa_atualizada = crud_tarefas.avancar_workflow_tarefa(
+            tarefa_id=tarefa_id,
+            nova_etapa=avancar.nova_etapa,
+            usuario_id=usuario_id,
+            usuario_nome=usuario_nome,
+            acao=avancar.acao,
+            db=db
+        )
+        return tarefa_atualizada
+    except PermissionError as e:
+        raise HTTPException(status_code=403, detail=str(e))
+
+
+@api_router.get("/tarefas/filtros", response_model=List[schemas.TarefaResponse])
+def listar_tarefas_com_filtros(
+    tipo_tarefa_id: Optional[int] = None,
+    processo_id: Optional[int] = None,
+    cliente_id: Optional[int] = None,
+    classe: Optional[str] = None,
+    esfera_justica: Optional[str] = None,
+    municipio_id: Optional[int] = None,
+    uf: Optional[str] = None,
+    responsavel_id: Optional[int] = None,
+    status: Optional[str] = None,
+    prazo_vencido: bool = False,
+    data_inicio: Optional[date_type] = None,
+    data_fim: Optional[date_type] = None,
+    db: Session = Depends(get_db)
+):
+    """Lista tarefas com filtros avançados."""
+    return crud_tarefas.listar_tarefas_com_filtros(
+        db=db,
+        tipo_tarefa_id=tipo_tarefa_id,
+        processo_id=processo_id,
+        cliente_id=cliente_id,
+        classe=classe,
+        esfera_justica=esfera_justica,
+        municipio_id=municipio_id,
+        uf=uf,
+        responsavel_id=responsavel_id,
+        status=status,
+        prazo_vencido=prazo_vencido,
+        data_inicio=data_inicio,
+        data_fim=data_fim
+    )
+
+
+@api_router.get("/tarefas/{tarefa_id}/derivadas", response_model=List[schemas.TarefaResponse])
+def listar_tarefas_derivadas(tarefa_id: int, recursivo: bool = False, db: Session = Depends(get_db)):
+    """Lista tarefas derivadas de uma tarefa."""
+    tarefa = crud_tarefas.buscar_tarefa(tarefa_id, db)
+    if not tarefa:
+        raise HTTPException(status_code=404, detail="Tarefa não encontrada")
+    
+    return crud_tarefas.listar_tarefas_derivadas(tarefa, db, recursivo)
+
+
+@api_router.get("/tarefas/estatisticas", response_model=schemas.EstatisticasTarefas)
+def obter_estatisticas_tarefas(db: Session = Depends(get_db)):
+    """Retorna estatísticas gerais sobre tarefas."""
+    return crud_tarefas.obter_estatisticas_tarefas(db)
+
+
+@api_router.get("/tarefas/metricas-responsavel", response_model=List[schemas.MetricasResponsavel])
+def obter_metricas_responsavel(db: Session = Depends(get_db)):
+    """Retorna métricas de tarefas por responsável."""
+    return crud_tarefas.obter_metricas_responsavel(db)
+
+
+@api_router.get("/tarefas/tempo-medio-tipo", response_model=List[schemas.TempoMedioPorTipo])
+def obter_tempo_medio_por_tipo(db: Session = Depends(get_db)):
+    """Retorna tempo médio de conclusão por tipo de tarefa."""
+    return crud_tarefas.obter_tempo_medio_por_tipo(db)
 
 
 

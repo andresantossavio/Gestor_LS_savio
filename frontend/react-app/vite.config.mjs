@@ -22,6 +22,9 @@ export default defineConfig({
     rollupOptions: {
       output: {
         manualChunks: undefined,  // Desabilita chunking automático
+        entryFileNames: `assets/[name]-[hash]-${Date.now()}.js`,
+        chunkFileNames: `assets/[name]-[hash]-${Date.now()}.js`,
+        assetFileNames: `assets/[name]-[hash]-${Date.now()}.[ext]`
       }
     }
   }

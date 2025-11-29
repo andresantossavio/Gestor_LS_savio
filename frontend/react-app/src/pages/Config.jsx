@@ -1,7 +1,9 @@
 import React, { useEffect, useState, useCallback } from 'react';
+import { useNavigate } from 'react-router-dom';
 import Header from '../components/Header';
 
 export default function Config() {
+  const navigate = useNavigate();
   const [usuarios, setUsuarios] = useState([]);
 
   const loadUsuarios = useCallback(async () => {
@@ -49,6 +51,20 @@ export default function Config() {
   return (
     <div style={{ padding: 20 }}>
       <Header title="Configurações" />
+      
+      {/* Card de Atalhos */}
+      <div className="card" style={{ marginBottom: 20 }}>
+        <h3 style={{ marginTop: 0, marginBottom: 15 }}>Configurações do Sistema</h3>
+        <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+          <button 
+            onClick={() => navigate('/configuracoes/feriados')} 
+            className="btn btn-secondary"
+          >
+            📅 Gestão de Feriados
+          </button>
+        </div>
+      </div>
+
       <h2>Gerenciamento de Perfis de Usuário</h2>
       <div style={{ marginTop: 20 }}>
         {usuarios.map(usuario => (

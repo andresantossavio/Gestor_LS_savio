@@ -19,16 +19,37 @@ export default function Tarefas() {
   useEffect(() => { load() }, [load])
 
   return (
-    <div style={{ padding: 20 }}>
-      <Header title="Tarefas" />
-      <button onClick={load}>Carregar</button>
-      <div style={{ marginTop: 20 }}>
-        {tarefas.length === 0 && <div>Nenhuma tarefa</div>}
-        {tarefas.map(t => (
-          <div key={t.id} style={{ borderBottom: '1px solid #ddd', padding: 10 }}>
-            <strong>Tipo ID: {t.tipo_tarefa_id}</strong> — {t.descricao_complementar || 'Sem descrição'} — Prazo: {t.prazo || 'N/A'}
+    <div className="content">
+      <div className="card">
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
+          <Header title="Tarefas" />
+          <button onClick={load} className="btn btn-primary">Atualizar</button>
+        </div>
+      </div>
+      
+      <div className="card">
+        {tarefas.length === 0 && <p style={{ textAlign: 'center', color: '#6b7280' }}>Nenhuma tarefa cadastrada</p>}
+        {tarefas.length > 0 && (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+            {tarefas.map(t => (
+              <div key={t.id} style={{ padding: '16px', backgroundColor: '#f9fafb', borderRadius: '8px', borderLeft: '4px solid #FFC107' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'start' }}>
+                  <div>
+                    <div style={{ fontWeight: '600', color: '#374151', marginBottom: '8px' }}>
+                      Tipo ID: {t.tipo_tarefa_id}
+                    </div>
+                    <div style={{ color: '#6b7280', fontSize: '14px' }}>
+                      {t.descricao_complementar || 'Sem descrição'}
+                    </div>
+                  </div>
+                  <div style={{ padding: '4px 12px', borderRadius: '12px', fontSize: '12px', fontWeight: '600', backgroundColor: '#dbeafe', color: '#1e40af', whiteSpace: 'nowrap' }}>
+                    Prazo: {t.prazo || 'N/A'}
+                  </div>
+                </div>
+              </div>
+            ))}
           </div>
-        ))}
+        )}
       </div>
     </div>
   )

@@ -2,15 +2,20 @@ import React from 'react';
 import { BrowserRouter, Routes, Route, Link } from 'react-router-dom';
 
 // Importe seus componentes de página
-import Dashboard from './pages/Dashboard';
-import ProcessosLayout from './pages/ProcessosLayout';
-import ProcessoDetalhe from './pages/ProcessoDetalhe';
-import Processos from './pages/Processos';
-import Clientes from './pages/Clientes';
-import Cadastros from './pages/Cadastros';
-import Usuarios from './pages/Usuarios';
-import Config from './pages/Config';
-import Contabilidade from './pages/Contabilidade';
+import Dashboard from './pages/Dashboard.jsx'
+import ProcessosLayout from './pages/ProcessosLayout.jsx'
+import ProcessoDetalhe from './pages/ProcessoDetalhe.jsx'
+import Processos from './pages/Processos.jsx'
+import Clientes from './pages/Clientes.jsx'
+import Cadastros from './pages/Cadastros.jsx'
+import Usuarios from './pages/Usuarios.jsx'
+import Config from './pages/Config.jsx'
+import Contabilidade from './pages/Contabilidade.jsx'
+import EntradaForm from './pages/EntradaForm.jsx'
+import DespesaForm from './pages/DespesaForm.jsx'
+import SocioPage from './pages/SocioPage.jsx'
+import DRE from './pages/DRE.jsx'
+import ConfigSimples from './pages/ConfigSimples.jsx'
 
 import './styles.css';
 
@@ -43,7 +48,12 @@ function App() {
             </Route>
             <Route path="/usuarios" element={<Usuarios />} />
             <Route path="/configuracoes" element={<Config />} />
-            <Route path="/contabilidade" element={<Contabilidade />} /> {/* 3. Adicionar a rota */}
+            <Route path="/contabilidade" element={<Contabilidade />} />
+            <Route path="/contabilidade/entradas/nova" element={<EntradaForm />} />
+            <Route path="/contabilidade/despesas/nova" element={<DespesaForm />} />
+            <Route path="/contabilidade/socios" element={<SocioPage />} />
+            <Route path="/contabilidade/dre" element={<DRE />} />
+            <Route path="/contabilidade/config-simples" element={<ConfigSimples />} />
             
             {/* Rota para página não encontrada */}
             <Route path="*" element={<h1>404: Página Não Encontrada</h1>} />

@@ -7,6 +7,9 @@ services:
     container_name: gestor_app
     volumes:
       - ./backend:/app/backend
+      - ./database:/app/database
+      - ./utils:/app/utils
+      - ./gestor_ls.db:/app/gestor_ls.db
     expose:
       - 8000
 

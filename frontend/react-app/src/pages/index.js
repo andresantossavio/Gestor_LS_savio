@@ -1,0 +1,15 @@
+export { default as Dashboard } from './Dashboard.jsx';
+export { default as ProcessosLayout } from './ProcessosLayout.jsx';
+export { default as ProcessoDetalhe } from './ProcessoDetalhe.jsx';
+export { default as Processos } from './Processos.jsx';
+export { default as Clientes } from './Clientes.jsx';
+export { default as Cadastros } from './Cadastros.jsx';
+export { default as Usuarios } from './Usuarios.jsx';
+export { default as Config } from './Config.jsx';
+export { default as Contabilidade } from './Contabilidade.jsx';
+export { default as EntradaForm } from './EntradaForm.jsx';
+export { default as DespesaForm } from './DespesaForm.jsx';
+export { default as SocioPage } from './SocioPage.jsx';
+export { default as DRE } from './DRE.jsx';
+export { default as DRETest } from './DRETest.jsx';
+export { default as ConfigSimples } from './ConfigSimples.jsx';

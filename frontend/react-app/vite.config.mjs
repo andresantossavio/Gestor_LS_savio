@@ -15,8 +15,14 @@ export default defineConfig({
     },
   },
   build: {
-    sourcemap: false,
+    sourcemap: true,  // Ativar sourcemap para debug
     outDir: 'dist',       // gera dentro de react-app/dist
-    emptyOutDir: true     // limpa a pasta antes de cada build
+    emptyOutDir: true,     // limpa a pasta antes de cada build
+    minify: 'esbuild',  // Usar esbuild ao invés de terser
+    rollupOptions: {
+      output: {
+        manualChunks: undefined,  // Desabilita chunking automático
+      }
+    }
   }
 })

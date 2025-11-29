@@ -51,6 +51,21 @@ const Widget = ({ title, children }) => (
 );
 
 const Dashboard = () => {
+    const [canRenderCharts, setCanRenderCharts] = useState(true);
+
+    useEffect(() => { 
+        // Simple guard: disable charts if container width might be 0
+        try {
+            const el = document.querySelector('main');
+            if (el && el.clientWidth < 300) {
+                setCanRenderCharts(false);
+            } else {
+                setCanRenderCharts(true);
+            }
+        } catch (e) {
+            setCanRenderCharts(false);
+        }
+    }, []);
     // Hooks para carregar dados da API (exemplo)
     // const [balanco, setBalanco] = useState(null);
     // useEffect(() => {
@@ -61,10 +76,12 @@ const Dashboard = () => {
         <div style={{ padding: 20 }}>
             <Header title="Painel de Contabilidade" />
 
-            <div style={{ marginBottom: '20px', display: 'flex', gap: '10px' }}>
+            <div style={{ marginBottom: '20px', display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
                 <Link to="/contabilidade/entradas/nova" style={buttonStyle}>+ Nova Entrada</Link>
                 <Link to="/contabilidade/despesas/nova" style={buttonStyle}>+ Nova Despesa</Link>
                 <Link to="/contabilidade/socios" style={buttonStyle}>Gerenciar Sócios</Link>
+                <Link to="/contabilidade/dre" style={buttonStyle}>📊 DRE Mensal</Link>
+                <Link to="/contabilidade/config-simples" style={buttonStyle}>⚙️ Config Simples</Link>
             </div>
 
             <div style={{ display: 'flex', flexWrap: 'wrap', gap: '20px' }}>
@@ -82,38 +99,46 @@ const Dashboard = () => {
                 </Widget>
 
                 <Widget title="Distribuição de Lucros">
-                    <ResponsiveContainer width="100%" height={200}>
-                        <PieChart>
-                            <Pie
-                                data={distribuicaoSociosData}
-                                cx="50%"
-                                cy="50%"
-                                labelLine={false}
-                                outerRadius={80}
-                                fill="#8884d8"
-                                dataKey="value"
-                                label={({ name, percent }) => `${name} ${(percent * 100).toFixed(0)}%`}
-                            >
-                                {distribuicaoSociosData.map((entry, index) => (
-                                    <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
-                                ))}
-                            </Pie>
-                            <Tooltip formatter={(value) => `R$ ${value.toFixed(2)}`} />
-                        </PieChart>
-                    </ResponsiveContainer>
+                    {canRenderCharts ? (
+                        <ResponsiveContainer width="100%" height={200}>
+                            <PieChart>
+                                <Pie
+                                    data={distribuicaoSociosData}
+                                    cx="50%"
+                                    cy="50%"
+                                    labelLine={false}
+                                    outerRadius={80}
+                                    fill="#8884d8"
+                                    dataKey="value"
+                                    label={({ name, percent }) => `${name} ${(percent * 100).toFixed(0)}%`}
+                                >
+                                    {distribuicaoSociosData.map((entry, index) => (
+                                        <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
+                                    ))}
+                                </Pie>
+                                <Tooltip formatter={(value) => `R$ ${value.toFixed(2)}`} />
+                            </PieChart>
+                        </ResponsiveContainer>
+                    ) : (
+                        <div style={{ color:'#6b7280', fontSize:13 }}>Gráficos desativados (layout estreito). Conteúdo funcional acima.</div>
+                    )}
                 </Widget>
 
                 <Widget title="Demonstração de Resultado (DRE)">
-                    <ResponsiveContainer width="100%" height={300}>
-                        <BarChart data={dreData} margin={{ top: 20, right: 30, left: 20, bottom: 5 }}>
-                            <CartesianGrid strokeDasharray="3 3" />
-                            <XAxis dataKey="name" />
-                            <YAxis />
-                            <Tooltip formatter={(value) => `R$ ${value.toFixed(2)}`} />
-                            <Legend />
-                            <Bar dataKey="valor" fill="#82ca9d" />
-                        </BarChart>
-                    </ResponsiveContainer>
+                    {canRenderCharts ? (
+                        <ResponsiveContainer width="100%" height={300}>
+                            <BarChart data={dreData} margin={{ top: 20, right: 30, left: 20, bottom: 5 }}>
+                                <CartesianGrid strokeDasharray="3 3" />
+                                <XAxis dataKey="name" />
+                                <YAxis />
+                                <Tooltip formatter={(value) => `R$ ${value.toFixed(2)}`} />
+                                <Legend />
+                                <Bar dataKey="valor" fill="#82ca9d" />
+                            </BarChart>
+                        </ResponsiveContainer>
+                    ) : (
+                        <div style={{ color:'#6b7280', fontSize:13 }}>Gráficos desativados (layout estreito).</div>
+                    )}
                 </Widget>
             </div>
         </div>

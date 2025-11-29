@@ -77,6 +77,33 @@ export default function ProcessoDetalhe() {
         </div>
       </div>
 
+      {/* Informações Detalhadas do Processo */}
+      <div className="card">
+        <h3>Informações do Processo</h3>
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '15px' }}>
+          <div><strong>Status:</strong> {processo.status || 'N/A'}</div>
+          <div><strong>Fase:</strong> {processo.fase || 'N/A'}</div>
+          <div><strong>Categoria:</strong> {processo.categoria || 'N/A'}</div>
+          <div><strong>Tipo:</strong> {processo.tipo || 'N/A'}</div>
+          {processo.rito && <div><strong>Rito:</strong> {processo.rito}</div>}
+          {processo.classe && <div><strong>Classe:</strong> {processo.classe}</div>}
+          {processo.sub_classe && <div><strong>Sub-classe:</strong> {processo.sub_classe}</div>}
+          {processo.esfera_justica && <div><strong>Esfera de Justiça:</strong> {processo.esfera_justica}</div>}
+          {processo.tribunal_originario && <div><strong>Tribunal Originário:</strong> {processo.tribunal_originario}</div>}
+          {processo.uf && <div><strong>UF:</strong> {processo.uf}</div>}
+          {processo.comarca && <div><strong>Comarca:</strong> {processo.comarca}</div>}
+          {processo.vara && <div><strong>Vara:</strong> {processo.vara}</div>}
+          {processo.data_abertura && <div><strong>Data de Abertura:</strong> {processo.data_abertura}</div>}
+          {processo.data_fechamento && <div><strong>Data de Fechamento:</strong> {processo.data_fechamento}</div>}
+        </div>
+        {processo.observacoes && (
+          <div style={{ marginTop: '15px' }}>
+            <strong>Observações:</strong>
+            <p style={{ marginTop: '5px', whiteSpace: 'pre-wrap' }}>{processo.observacoes}</p>
+          </div>
+        )}
+      </div>
+
       {/* Seções para Andamentos, Tarefas, etc. */}
       <div className="card">
         <h3>Andamentos</h3>

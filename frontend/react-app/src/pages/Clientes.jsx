@@ -5,6 +5,8 @@ const apiBase = '/api';
 
 // Componente do Formulário de Cliente
 function ClienteForm({ clienteParaEditar, onFormSubmit, onCancel }) {
+  const inputStyle = { display: 'block', marginBottom: '10px', width: '100%', maxWidth: '500px', padding: '8px', borderRadius: '6px', border: '1px solid #d1d5db', fontSize: '14px' };
+  
   const [formData, setFormData] = useState({
     nome: '',
     cpf_cnpj: '',
@@ -105,10 +107,10 @@ function ClienteForm({ clienteParaEditar, onFormSubmit, onCancel }) {
   const subtiposPjPrivado = ["MEI", "EI", "LTDA", "SLU", "Sociedade Simples", "S/A", "SAF", "Associação", "Cooperativa", "Fundação", "Autarquia"];
 
   return (
-    <div style={{ border: '1px solid #ccc', padding: '20px', margin: '20px 0' }}>
-      <h3>{isEditing ? 'Editar Cliente' : 'Novo Cliente'}</h3>
+    <div className="card" style={{ marginTop: '20px' }}>
+      <h3 style={{ marginTop: 0, marginBottom: '20px', color: '#374151' }}>{isEditing ? 'Editar Cliente' : 'Novo Cliente'}</h3>
       <form onSubmit={handleSubmit}>
-        <select name="tipo_pessoa" value={formData.tipo_pessoa} onChange={handleChange} required style={{ display: 'block', marginBottom: '10px', width: '300px' }}>
+        <select name="tipo_pessoa" value={formData.tipo_pessoa} onChange={handleChange} required style={inputStyle}>
           <option value="">Selecione o Tipo de Pessoa</option>
           <option value="Pessoa Física">Pessoa Física</option>
           <option value="Pessoa Jurídica">Pessoa Jurídica</option>
@@ -117,21 +119,21 @@ function ClienteForm({ clienteParaEditar, onFormSubmit, onCancel }) {
         {/* Campos para Pessoa Jurídica */}
         {formData.tipo_pessoa === 'Pessoa Jurídica' && (
           <>
-            <select name="tipo_pj" value={formData.tipo_pj} onChange={handleChange} required style={{ display: 'block', marginBottom: '10px', width: '300px' }}>
+            <select name="tipo_pj" value={formData.tipo_pj} onChange={handleChange} required style={inputStyle}>
               <option value="">Selecione o Tipo de PJ</option>
               <option value="Direito Público">PJ de Direito Público</option>
               <option value="Direito Privado">PJ de Direito Privado</option>
             </select>
 
             {formData.tipo_pj === 'Direito Público' && (
-              <select name="subtipo_pj" value={formData.subtipo_pj} onChange={handleChange} required style={{ display: 'block', marginBottom: '10px', width: '300px' }}>
+              <select name="subtipo_pj" value={formData.subtipo_pj} onChange={handleChange} required style={inputStyle}>
                 <option value="">Selecione o Subtipo</option>
                 {subtiposPjPublico.map(sub => <option key={sub} value={sub}>{sub}</option>)}
               </select>
             )}
 
             {formData.tipo_pj === 'Direito Privado' && (
-              <select name="subtipo_pj" value={formData.subtipo_pj} onChange={handleChange} required style={{ display: 'block', marginBottom: '10px', width: '300px' }}>
+              <select name="subtipo_pj" value={formData.subtipo_pj} onChange={handleChange} required style={inputStyle}>
                 <option value="">Selecione o Subtipo</option>
                 {subtiposPjPrivado.map(sub => <option key={sub} value={sub}>{sub}</option>)}
               </select>
@@ -139,7 +141,7 @@ function ClienteForm({ clienteParaEditar, onFormSubmit, onCancel }) {
 
             {/* Campo Nome Fantasia para PJ de Direito Privado */}
             {formData.tipo_pj === 'Direito Privado' && (
-              <input name="nome_fantasia" value={formData.nome_fantasia} onChange={handleChange} placeholder="Nome Fantasia" style={{ display: 'block', marginBottom: '10px', width: '300px' }} />
+              <input name="nome_fantasia" value={formData.nome_fantasia} onChange={handleChange} placeholder="Nome Fantasia" style={inputStyle} />
             )}
 
           </>
@@ -148,7 +150,7 @@ function ClienteForm({ clienteParaEditar, onFormSubmit, onCancel }) {
         {/* Campos Comuns (aparecem após a seleção inicial) */}
         {formData.tipo_pessoa === 'Pessoa Física' && (
           <>
-            <select name="capacidade" value={formData.capacidade} onChange={handleChange} required style={{ display: 'block', marginBottom: '10px', width: '300px' }}>
+            <select name="capacidade" value={formData.capacidade} onChange={handleChange} required style={inputStyle}>
               <option value="">Selecione a Capacidade</option>
               <option value="Capaz">Pessoa Capaz</option>
               <option value="Relativamente Incapaz">Relativamente Incapaz</option>
@@ -157,8 +159,8 @@ function ClienteForm({ clienteParaEditar, onFormSubmit, onCancel }) {
 
             {['Relativamente Incapaz', 'Incapaz'].includes(formData.capacidade) && (
               <>
-                <input name="responsavel_nome" value={formData.responsavel_nome} onChange={handleChange} placeholder="Nome do Responsável Legal" required style={{ display: 'block', marginBottom: '10px', width: '300px' }} />
-                <input name="responsavel_cpf" value={formData.responsavel_cpf} onChange={handleChange} placeholder="CPF do Responsável Legal" required style={{ display: 'block', marginBottom: '10px', width: '300px' }} />
+                <input name="responsavel_nome" value={formData.responsavel_nome} onChange={handleChange} placeholder="Nome do Responsável Legal" required style={inputStyle} />
+                <input name="responsavel_cpf" value={formData.responsavel_cpf} onChange={handleChange} placeholder="CPF do Responsável Legal" required style={inputStyle} />
               </>
             )}
           </>
@@ -166,25 +168,27 @@ function ClienteForm({ clienteParaEditar, onFormSubmit, onCancel }) {
 
         {formData.tipo_pessoa && (
           <>
-            <input name="nome" value={formData.nome} onChange={handleChange} placeholder={formData.tipo_pessoa === 'Pessoa Física' ? 'Nome Completo' : 'Razão Social'} required style={{ display: 'block', marginBottom: '10px', width: '300px' }} />
-            <input name="cpf_cnpj" value={formData.cpf_cnpj} onChange={handleChange} placeholder={formData.tipo_pessoa === 'Pessoa Física' ? 'CPF' : 'CNPJ'} required style={{ display: 'block', marginBottom: '10px', width: '300px' }} />
-            <input name="telefone" value={formData.telefone} onChange={handleChange} placeholder="Telefone" style={{ display: 'block', marginBottom: '10px', width: '300px' }} />
-            <input type="email" name="email" value={formData.email} onChange={handleChange} placeholder="Email" style={{ display: 'block', marginBottom: '10px', width: '300px' }} />
-            <input name="cep" value={formData.cep} onChange={handleChange} placeholder="CEP" style={{ display: 'block', marginBottom: '10px', width: '300px' }} />
-            <input name="logradouro" value={formData.logradouro} onChange={handleChange} placeholder="Logradouro (Rua, Av.)" style={{ display: 'block', marginBottom: '10px', width: '300px' }} />
-            <input name="numero" value={formData.numero} onChange={handleChange} placeholder="Número" style={{ display: 'block', marginBottom: '10px', width: '300px' }} />
-            <input name="complemento" value={formData.complemento} onChange={handleChange} placeholder="Complemento (Apto, Bloco)" style={{ display: 'block', marginBottom: '10px', width: '300px' }} />
-            <input name="bairro" value={formData.bairro} onChange={handleChange} placeholder="Bairro" style={{ display: 'block', marginBottom: '10px', width: '300px' }} />
-            <input name="cidade" value={formData.cidade} onChange={handleChange} placeholder="Cidade" style={{ display: 'block', marginBottom: '10px', width: '300px' }} />
-            <select name="uf" value={formData.uf} onChange={handleChange} style={{ display: 'block', marginBottom: '10px', width: '300px' }}>
+            <input name="nome" value={formData.nome} onChange={handleChange} placeholder={formData.tipo_pessoa === 'Pessoa Física' ? 'Nome Completo' : 'Razão Social'} required style={inputStyle} />
+            <input name="cpf_cnpj" value={formData.cpf_cnpj} onChange={handleChange} placeholder={formData.tipo_pessoa === 'Pessoa Física' ? 'CPF' : 'CNPJ'} required style={inputStyle} />
+            <input name="telefone" value={formData.telefone} onChange={handleChange} placeholder="Telefone" style={inputStyle} />
+            <input type="email" name="email" value={formData.email} onChange={handleChange} placeholder="Email" style={inputStyle} />
+            <input name="cep" value={formData.cep} onChange={handleChange} placeholder="CEP" style={inputStyle} />
+            <input name="logradouro" value={formData.logradouro} onChange={handleChange} placeholder="Logradouro (Rua, Av.)" style={inputStyle} />
+            <input name="numero" value={formData.numero} onChange={handleChange} placeholder="Número" style={inputStyle} />
+            <input name="complemento" value={formData.complemento} onChange={handleChange} placeholder="Complemento (Apto, Bloco)" style={inputStyle} />
+            <input name="bairro" value={formData.bairro} onChange={handleChange} placeholder="Bairro" style={inputStyle} />
+            <input name="cidade" value={formData.cidade} onChange={handleChange} placeholder="Cidade" style={inputStyle} />
+            <select name="uf" value={formData.uf} onChange={handleChange} style={inputStyle}>
               <option value="">Selecione a UF</option>
               {ufs.map(uf => <option key={uf} value={uf}>{uf}</option>)}
             </select>
           </>
         )}
 
-        <button type="submit">Salvar</button>
-        <button type="button" onClick={onCancel} style={{ marginLeft: '10px' }}>Cancelar</button>
+        <div style={{ marginTop: '20px' }}>
+          <button type="submit" className="btn btn-primary">Salvar</button>
+          <button type="button" onClick={onCancel} className="btn btn-secondary" style={{ marginLeft: '10px' }}>Cancelar</button>
+        </div>
       </form>
     </div>
   );
@@ -226,26 +230,51 @@ export default function Clientes() {
   };
 
   return (
-    <div style={{ padding: 20 }}>
-      <Header title="Clientes" />
-      {!exibirForm && <button onClick={() => { setClienteParaEditar(null); setExibirForm(true); }}>Novo Cliente</button>}
+    <div className="content">
+      <div className="card">
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
+          <Header title="Clientes" />
+          {!exibirForm && (
+            <button onClick={() => { setClienteParaEditar(null); setExibirForm(true); }} className="btn btn-primary">
+              + Novo Cliente
+            </button>
+          )}
+        </div>
+      </div>
+
       {exibirForm && <ClienteForm
         clienteParaEditar={clienteParaEditar}
         onFormSubmit={() => { setExibirForm(false); load(); }}
         onCancel={() => setExibirForm(false)}
       />}
-      <div style={{ marginTop: 20 }}>
-        {clientes.length === 0 && <div>Nenhum cliente</div>}
-        {clientes.map(c => (
-          <div key={c.id} style={{ borderBottom: '1px solid #ddd', padding: 10 }}>
-            <strong>{c.nome}</strong> 
-            {c.nome_fantasia && ` (${c.nome_fantasia})`}
-            — {c.cpf_cnpj} — {c.cidade}/{c.uf}
-            <button onClick={() => handleEdit(c)} style={{ marginLeft: '20px' }}>Editar</button>
-            <button onClick={() => handleDelete(c.id)} style={{ marginLeft: '10px' }}>Excluir</button>
-          </div>
-        ))}
-      </div>
+
+      {!exibirForm && (
+        <div className="card">
+          {clientes.length === 0 && <p style={{ textAlign: 'center', color: '#6b7280' }}>Nenhum cliente cadastrado</p>}
+          {clientes.length > 0 && (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+              {clientes.map(c => (
+                <div key={c.id} style={{ padding: '16px', backgroundColor: '#f9fafb', borderRadius: '8px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', transition: 'all 0.2s' }}>
+                  <div>
+                    <div style={{ fontWeight: '600', color: '#374151', marginBottom: '4px' }}>
+                      {c.nome}
+                      {c.nome_fantasia && <span style={{ color: '#6b7280', fontWeight: '400' }}> ({c.nome_fantasia})</span>}
+                    </div>
+                    <div style={{ color: '#6b7280', fontSize: '14px' }}>
+                      {c.cpf_cnpj} • {c.cidade}/{c.uf}
+                    </div>
+                  </div>
+                  <div>
+                    <button onClick={() => window.location.href = `/clientes/${c.id}`} className="btn btn-primary" style={{ marginRight: '8px', padding: '6px 12px', fontSize: '13px' }}>Ver Detalhes</button>
+                    <button onClick={() => handleEdit(c)} className="btn btn-primary" style={{ marginRight: '8px', padding: '6px 12px', fontSize: '13px' }}>Editar</button>
+                    <button onClick={() => handleDelete(c.id)} className="btn btn-secondary" style={{ padding: '6px 12px', fontSize: '13px' }}>Excluir</button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
     </div>
   )
 }

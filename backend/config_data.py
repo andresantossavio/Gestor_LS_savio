@@ -6,7 +6,7 @@ UFS = [
     "SP", "SE", "TO"
 ]
 
-TIPOS_PROCESSO = ["Judicial", "Administrativo"]
+TIPOS_PROCESSO = ["Judicial", "Extrajudicial", "Arbitral", "Administrativo"]
 
 CATEGORIAS_PROCESSO = ["Comum", "Originário"]
 
@@ -22,11 +22,53 @@ ESFERAS_JUSTICA = [
 
 # Baseado na lógica do frontend
 CLASSES_JURIDICAS = {
-    "Cível": ["Família", "Contratos", "Consumidor", "Imobiliário"],
-    "Criminal": [],
+    "Cível": ["Comum", "Consumidor", "Família", "Inventário"],
+    "Criminal": ["Ação Penal Pública Incondicionada", "Ação Penal Pública Condicionada", "Ação Penal Privada"],
     "Trabalhista": [],
     "Tributário": [],
     "Previdenciário": [],
     "Empresarial": ["Falência e Recuperação", "Societário"],
-    "Eleitoral": ["Eleitoral Cível", "Eleitoral Criminal"]
+    "Eleitoral": ["Eleitoral Cível", "Eleitoral Criminal"],
+    "Administrativo": [],
+    "Constitucional": []
+}
+
+# Ritos processuais (apenas para tipo Judicial)
+RITOS = {
+    "Cível": ["Ordinário", "Juizado Especial Cível", "Inventário"],
+    "Criminal": [
+        # Ritos Comuns
+        "Ordinário",
+        "Sumário",
+        "Sumaríssimo",
+        # Ritos Especiais
+        "Tribunal do Júri",
+        "Lei de Drogas",
+        "Juizado Especial Criminal",
+        "Funcionário Público",
+        "Eleitoral",
+        "Militar",
+        "Propriedade Imaterial",
+        "Maria da Penha",
+        "Terrorismo / Segurança Nacional"
+    ],
+    "Constitucional": [
+        "Mandado de segurança",
+        "Habeas Data"
+    ],
+    "Administrativo": [
+        "Ação popular",
+        "Ação Civil Pública",
+        "Improbidade",
+        "Desapropriação",
+        "Registros Públicos"
+    ],
+    "Tributário": [
+        "Comum",
+        "Execução Fiscal"
+    ],
+    "Trabalhista": ["Comum"],
+    "Previdenciário": ["Comum"],
+    "Empresarial": ["Comum"],
+    "Eleitoral": ["Comum"]
 }

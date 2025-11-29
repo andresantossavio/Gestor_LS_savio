@@ -3,10 +3,24 @@ from datetime import date, datetime
 from typing import Optional, List
 
 class ClienteBase(BaseModel):
-    nome: str
-    cpf_cnpj: str
-    telefone: str | None = None
-    email: str | None = None
+    nome: Optional[str] = None
+    nome_fantasia: Optional[str] = None
+    cpf_cnpj: Optional[str] = None
+    tipo_pessoa: Optional[str] = None
+    tipo_pj: Optional[str] = None
+    subtipo_pj: Optional[str] = None
+    capacidade: Optional[str] = None
+    responsavel_nome: Optional[str] = None
+    responsavel_cpf: Optional[str] = None
+    telefone: Optional[str] = None
+    email: Optional[str] = None
+    logradouro: Optional[str] = None
+    numero: Optional[str] = None
+    complemento: Optional[str] = None
+    bairro: Optional[str] = None
+    cidade: Optional[str] = None
+    uf: Optional[str] = None
+    cep: Optional[str] = None
 
 class ClienteCreate(ClienteBase):
     pass
@@ -29,6 +43,13 @@ class ProcessoBase(BaseModel):
     uf: Optional[str] = None
     comarca: Optional[str] = None
     vara: Optional[str] = None
+    categoria: Optional[str] = None
+    tribunal_originario: Optional[str] = None
+    esfera_justica: Optional[str] = None
+    tipo: Optional[str] = None
+    rito: Optional[str] = None
+    classe: Optional[str] = None
+    sub_classe: Optional[str] = None
     status: Optional[str] = None
     observacoes: Optional[str] = None
     data_abertura: Optional[str] = None

@@ -19,6 +19,7 @@ export default function ProcessoForm({ processoParaEditar, onFormSubmit, onCance
     categoria: '',
     tribunal_originario: '',
     tipo: '',
+    rito: '',
     status: '',
     data_abertura: '',
     classe: '',
@@ -42,17 +43,19 @@ export default function ProcessoForm({ processoParaEditar, onFormSubmit, onCance
   const [esferas, setEsferas] = useState([]);
   const [clientes, setClientes] = useState([]);
   const [classes, setClasses] = useState({});
+  const [ritos, setRitos] = useState({});
 
   useEffect(() => {
     const fetchConfigData = async () => {
       try {
-        const [ufsRes, classesRes, tiposRes, categoriasRes, tribunaisRes, esferasRes, clientesRes] = await Promise.all([
+        const [ufsRes, classesRes, tiposRes, categoriasRes, tribunaisRes, esferasRes, ritosRes, clientesRes] = await Promise.all([
           fetch('/api/config/ufs'),
           fetch('/api/config/classes'),
           fetch('/api/config/tipos'),
           fetch('/api/config/categorias'),
           fetch('/api/config/tribunais'),
           fetch('/api/config/esferas'),
+          fetch('/api/config/ritos'),
           fetch('/api/clientes') // Busca a lista de clientes
         ]);
         setUfs(await ufsRes.json());
@@ -61,6 +64,9 @@ export default function ProcessoForm({ processoParaEditar, onFormSubmit, onCance
         setCategorias(await categoriasRes.json());
         setTribunais(await tribunaisRes.json());
         setEsferas(await esferasRes.json());
+        const ritosData = await ritosRes.json();
+        console.log('Ritos carregados:', ritosData);
+        setRitos(ritosData);
         setClientes(await clientesRes.json()); // Armazena a lista de clientes no estado
       } catch (err) {
         console.error("Erro ao buscar dados de configuração:", err);
@@ -141,6 +147,46 @@ export default function ProcessoForm({ processoParaEditar, onFormSubmit, onCance
       newFormData.fase = '';
     }
 
+    // Se o tipo mudar e não for Judicial, limpa o rito
+    if (name === 'tipo' && value !== 'Judicial') {
+      newFormData.rito = '';
+    }
+
+    // Se a classe mudar, limpa o rito para reavaliação
+    if (name === 'classe') {
+      newFormData.rito = '';
+    }
+
+    // Se o rito for Militar, a esfera deve ser Justiça Militar
+    if (name === 'rito' && value === 'Militar') {
+      newFormData.esfera_justica = 'Justiça Militar';
+    }
+
+    // Se o rito for Terrorismo / Segurança Nacional, a esfera deve ser Justiça Federal
+    if (name === 'rito' && value === 'Terrorismo / Segurança Nacional') {
+      newFormData.esfera_justica = 'Justiça Federal';
+    }
+
+    // Se a esfera for Justiça Militar e a classe for Criminal, sugere o rito Militar
+    if (name === 'esfera_justica' && value === 'Justiça Militar' && newFormData.classe === 'Criminal') {
+      // Não força, mas se o rito estiver vazio, pode sugerir
+      if (!newFormData.rito) {
+        newFormData.rito = 'Militar';
+      }
+    }
+
+    // Se a esfera for Justiça Federal e a classe for Criminal, sugere o rito Terrorismo / Segurança Nacional
+    if (name === 'esfera_justica' && value === 'Justiça Federal' && newFormData.classe === 'Criminal') {
+      if (!newFormData.rito) {
+        newFormData.rito = 'Terrorismo / Segurança Nacional';
+      }
+    }
+
+    // Se mudar o rito de Militar para outro e a esfera for Militar, limpa a esfera
+    if (name === 'rito' && formData.rito === 'Militar' && value !== 'Militar' && newFormData.esfera_justica === 'Justiça Militar') {
+      newFormData.esfera_justica = '';
+    }
+
     // Se o tribunal for TRF ou TJ e a classe for Trabalhista, limpa a classe
     if (name === 'tribunal_originario' && ['TRF', 'TJ'].includes(value) && newFormData.classe === 'Trabalhista') {
       newFormData.classe = '';
@@ -207,9 +253,13 @@ export default function ProcessoForm({ processoParaEditar, onFormSubmit, onCance
   // 1. Filtra as esferas disponíveis com base nas regras
   let availableEsferas = [...esferas];
 
-  // Regra da Esfera Militar: só aparece se a classe for Criminal
-  if (formData.classe !== 'Criminal') {
+  // Regra da Esfera Militar: só aparece se a classe for Criminal OU se o rito for Militar
+  if (formData.classe !== 'Criminal' && formData.rito !== 'Militar') {
     availableEsferas = availableEsferas.filter(e => e !== 'Justiça Militar');
+  }
+  // Se o rito for Militar, só mostra Justiça Militar
+  if (formData.rito === 'Militar') {
+    availableEsferas = availableEsferas.filter(e => e === 'Justiça Militar');
   }
 
   // Regra da Esfera Trabalhista: só aparece nos cenários corretos
@@ -227,11 +277,12 @@ export default function ProcessoForm({ processoParaEditar, onFormSubmit, onCance
   }
 
   // 2. Define se o campo de seleção manual da Esfera deve ser exibido
+  // Exibe para processos Judiciais (Comum ou Originário) quando as condições forem atendidas
   const deveExibirEsfera = (
-    // Cenário Comum
-    (formData.categoria === 'Comum' && formData.tipo === 'Judicial' && ['Cível', 'Criminal', 'Tributário', 'Previdenciário', 'Empresarial'].includes(formData.classe)) ||
-    // Cenário Originário
-    (formData.categoria === 'Originário' && ['STJ', 'STF', 'TJ'].includes(formData.tribunal_originario))
+    // Cenário Comum - qualquer processo judicial
+    (formData.categoria === 'Comum' && formData.tipo === 'Judicial' && formData.classe) ||
+    // Cenário Originário - STJ, STF, TJ, TRF, TRE, TRT
+    (formData.categoria === 'Originário' && formData.tribunal_originario)
   );
 
   // --- LÓGICA DE EXIBIÇÃO DAS FASES ---
@@ -277,7 +328,7 @@ export default function ProcessoForm({ processoParaEditar, onFormSubmit, onCance
         )}
 
         {/* Campos de Classe/Sub-classe para Tribunais específicos em Originário */}
-        {formData.categoria === 'Originário' && ['STJ', 'STF', 'TJ', 'TRF'].includes(formData.tribunal_originario) && (
+        {formData.categoria === 'Originário' && ['STJ', 'STF', 'TJ', 'TRF', 'TRE', 'TRT', 'TRM'].includes(formData.tribunal_originario) && (
           <>
             <select name="classe" value={formData.classe} onChange={handleChange}>
               <option value="">Selecione a Classe</option>
@@ -285,6 +336,13 @@ export default function ProcessoForm({ processoParaEditar, onFormSubmit, onCance
             </select>
             {subClasses.length > 0 && (
               <select name="sub_classe" value={formData.sub_classe} onChange={handleChange}><option value="">Selecione a Sub-classe</option>{subClasses.map(sub => <option key={sub} value={sub}>{sub}</option>)}</select>
+            )}
+            {/* Campo de Rito para Originário - só aparece para Cível ou Criminal */}
+            {['Cível', 'Criminal'].includes(formData.classe) && (
+              <select name="rito" value={formData.rito} onChange={handleChange}>
+                <option value="">Selecione o Rito</option>
+                {(ritos[formData.classe] || []).map(r => <option key={r} value={r}>{r}</option>)}
+              </select>
             )}
           </>
         )}
@@ -312,15 +370,24 @@ export default function ProcessoForm({ processoParaEditar, onFormSubmit, onCance
                 {subClasses.map(sub => <option key={sub} value={sub}>{sub}</option>)}
               </select>
             )}
-
-            {/* Campo condicional para Esfera de Justiça */}
-            {deveExibirEsfera && (
-              <select name="esfera_justica" value={formData.esfera_justica} onChange={handleChange}>
-                <option value="">Selecione a Esfera de Justiça</option>
-                {availableEsferas.map(e => <option key={e} value={e}>{e}</option>)}
+            {/* Campo de Rito - sempre para qualquer classe Judicial (fallback 'Comum') */}
+            {formData.tipo === 'Judicial' && formData.classe && (
+              <select name="rito" value={formData.rito} onChange={handleChange}>
+                <option value="">Selecione o Rito</option>
+                {(Array.isArray(ritos[formData.classe]) && ritos[formData.classe].length > 0 ? ritos[formData.classe] : ['Comum']).map(r => (
+                  <option key={r} value={r}>{r}</option>
+                ))}
               </select>
             )}
           </>
+        )}
+
+        {/* Campo de Esfera de Justiça - exibido para processos judiciais */}
+        {deveExibirEsfera && (
+          <select name="esfera_justica" value={formData.esfera_justica} onChange={handleChange}>
+            <option value="">Selecione a Esfera de Justiça</option>
+            {availableEsferas.map(e => <option key={e} value={e}>{e}</option>)}
+          </select>
         )}
 
         <select name="fase" value={formData.fase} onChange={handleChange}>

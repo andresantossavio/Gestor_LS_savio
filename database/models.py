@@ -66,6 +66,7 @@ class Processo(Base):
     tribunal_originario = Column(String, nullable=True) # Ex: STJ, STF, etc.
     esfera_justica = Column(String, nullable=True) # Ex: Justiça Federal, Justiça Estadual
     tipo = Column(String, nullable=True) # Ex: Judicial, Extrajudicial, etc.
+    rito = Column(String, nullable=True) # Ex: Comum, Sumário, Sumaríssimo
     classe = Column(String, nullable=True) # Ex: Cível, Criminal, Trabalhista
     sub_classe = Column(String, nullable=True) # Ex: Ação Pública, Ação Privada
     status = Column(String)
@@ -89,6 +90,28 @@ class Pagamento(Base):
     tipo = Column(String)
     processo_id = Column(Integer, ForeignKey("processos.id"))
     processo = relationship("Processo")
+
+class Recebimento(Base):
+    __tablename__ = "recebimentos"
+
+    id = Column(Integer, primary_key=True, index=True)
+    cliente_nome = Column(String, nullable=True)
+    data = Column(Date, nullable=True)
+    valor_centavos = Column(Integer, nullable=True)
+    observacao = Column(String, nullable=True)
+
+    participacoes = relationship("ParticipacaoSocio", back_populates="recebimento", cascade="all, delete-orphan")
+
+class ParticipacaoSocio(Base):
+    __tablename__ = "participacoes_socio"
+
+    id = Column(Integer, primary_key=True, index=True)
+    recebimento_id = Column(Integer, ForeignKey("recebimentos.id"), index=True)
+    usuario_id = Column(Integer, nullable=True)
+    socio_nome = Column(String, nullable=True)
+    percentual_mil = Column(Integer, nullable=True)
+
+    recebimento = relationship("Recebimento", back_populates="participacoes")
 
 class Andamento(Base):
     __tablename__ = "andamentos"
@@ -259,3 +282,34 @@ class Fundo(Base):
     id = Column(Integer, primary_key=True, index=True)
     nome = Column(String(100), unique=True, nullable=False)
     saldo = Column(Float, default=0.0, nullable=False)
+
+
+class SimplesFaixa(Base):
+    __tablename__ = "simples_faixas"
+
+    id = Column(Integer, primary_key=True, index=True)
+    limite_superior = Column(Float, nullable=False)  # Limite superior da faixa (ex: 180000.00)
+    aliquota = Column(Float, nullable=False)  # Alíquota nominal (ex: 0.045 para 4.5%)
+    deducao = Column(Float, nullable=False, default=0.0)  # Dedução em reais (ex: 8100.00)
+    vigencia_inicio = Column(Date, nullable=False)  # Data de início da vigência
+    vigencia_fim = Column(Date, nullable=True)  # Data de fim da vigência (NULL = vigente)
+    ordem = Column(Integer, nullable=False)  # Ordem da faixa (1, 2, 3...)
+
+
+class DREMensal(Base):
+    __tablename__ = "dre_mensal"
+
+    id = Column(Integer, primary_key=True, index=True)
+    mes = Column(String(7), nullable=False, unique=True, index=True)  # YYYY-MM
+    receita_bruta = Column(Float, nullable=False, default=0.0)
+    receita_12m = Column(Float, nullable=False, default=0.0)  # Acumulado 12 meses
+    aliquota = Column(Float, nullable=False, default=0.0)  # Alíquota nominal aplicada
+    aliquota_efetiva = Column(Float, nullable=False, default=0.0)  # Alíquota após dedução
+    deducao = Column(Float, nullable=False, default=0.0)  # Valor da dedução
+    imposto = Column(Float, nullable=False, default=0.0)  # Imposto do mês (Simples)
+    inss_patronal = Column(Float, nullable=False, default=0.0)  # INSS 20% sobre pró-labore
+    despesas_gerais = Column(Float, nullable=False, default=0.0)  # Água, luz, etc.
+    lucro_liquido = Column(Float, nullable=False, default=0.0)  # Receita - impostos - despesas
+    reserva_10p = Column(Float, nullable=False, default=0.0)  # 10% do lucro líquido
+    consolidado = Column(Boolean, default=False, nullable=False)  # Flag de consolidação
+    data_consolidacao = Column(DateTime, nullable=True)  # Timestamp da consolidação

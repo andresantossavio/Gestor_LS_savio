@@ -120,6 +120,63 @@ def get_entradas(db: Session, skip: int = 0, limit: int = 100) -> List[models.En
     """Busca todas as entradas com os sócios relacionados."""
     return db.query(models.Entrada).options(joinedload(models.Entrada.socios)).offset(skip).limit(limit).all()
 
+def update_entrada(db: Session, entrada_id: int, entrada: schemas.EntradaCreate) -> models.Entrada:
+    """Atualiza uma entrada existente, incluindo as porcentagens dos sócios."""
+    db_entrada = db.query(models.Entrada).filter(models.Entrada.id == entrada_id).first()
+    if not db_entrada:
+        return None
+    
+    # Atualizar campos básicos
+    for key, value in entrada.dict(exclude={'socios'}).items():
+        setattr(db_entrada, key, value)
+    
+    # Se socios foram fornecidos, atualizar as porcentagens
+    if entrada.socios:
+        # 1. Reverter os saldos dos sócios anteriores
+        entradas_socios_antigas = db.query(models.EntradaSocio).filter(
+            models.EntradaSocio.entrada_id == entrada_id
+        ).all()
+        
+        for assoc in entradas_socios_antigas:
+            socio = get_socio(db, socio_id=assoc.socio_id)
+            if socio:
+                valor_antigo = (assoc.percentual / 100) * db_entrada.valor
+                socio.saldo -= valor_antigo
+        
+        # 2. Excluir associações antigas
+        db.query(models.EntradaSocio).filter(models.EntradaSocio.entrada_id == entrada_id).delete()
+        
+        # 3. Criar novas associações e atualizar saldos
+        for socio_assoc_data in entrada.socios:
+            socio = get_socio(db, socio_id=socio_assoc_data.socio_id)
+            if socio:
+                valor_saldo = (socio_assoc_data.percentual / 100) * entrada.valor
+                socio.saldo += valor_saldo
+            
+            db_assoc = models.EntradaSocio(
+                entrada_id=entrada_id,
+                socio_id=socio_assoc_data.socio_id,
+                percentual=socio_assoc_data.percentual
+            )
+            db.add(db_assoc)
+    
+    db.commit()
+    db.refresh(db_entrada)
+    return db_entrada
+
+def delete_entrada(db: Session, entrada_id: int) -> models.Entrada:
+    """Exclui uma entrada."""
+    db_entrada = db.query(models.Entrada).filter(models.Entrada.id == entrada_id).first()
+    if not db_entrada:
+        return None
+    
+    # Excluir associações com sócios primeiro
+    db.query(models.EntradaSocio).filter(models.EntradaSocio.entrada_id == entrada_id).delete()
+    
+    db.delete(db_entrada)
+    db.commit()
+    return db_entrada
+
 # =================================================================
 # CRUD for Despesa (with business logic)
 # =================================================================
@@ -155,6 +212,66 @@ def create_despesa(db: Session, despesa: schemas.DespesaCreate) -> models.Despes
 def get_despesas(db: Session, skip: int = 0, limit: int = 100) -> List[models.Despesa]:
     """Busca todas as despesas com os responsáveis relacionados."""
     return db.query(models.Despesa).options(joinedload(models.Despesa.responsaveis)).offset(skip).limit(limit).all()
+
+def update_despesa(db: Session, despesa_id: int, despesa: schemas.DespesaCreate) -> models.Despesa:
+    """Atualiza uma despesa existente, incluindo os responsáveis."""
+    db_despesa = db.query(models.Despesa).filter(models.Despesa.id == despesa_id).first()
+    if not db_despesa:
+        return None
+    
+    # Atualizar campos básicos
+    for key, value in despesa.dict(exclude={'responsaveis'}).items():
+        setattr(db_despesa, key, value)
+    
+    # Se responsaveis foram fornecidos, atualizar
+    if despesa.responsaveis:
+        # 1. Reverter os saldos dos responsáveis anteriores
+        despesas_socios_antigas = db.query(models.DespesaSocio).filter(
+            models.DespesaSocio.despesa_id == despesa_id
+        ).all()
+        
+        num_responsaveis_antigos = len(despesas_socios_antigas)
+        if num_responsaveis_antigos > 0:
+            valor_por_responsavel_antigo = db_despesa.valor / num_responsaveis_antigos
+            for assoc in despesas_socios_antigas:
+                socio = get_socio(db, socio_id=assoc.socio_id)
+                if socio:
+                    socio.saldo += valor_por_responsavel_antigo
+        
+        # 2. Excluir associações antigas
+        db.query(models.DespesaSocio).filter(models.DespesaSocio.despesa_id == despesa_id).delete()
+        
+        # 3. Criar novas associações e atualizar saldos
+        num_novos_responsaveis = len(despesa.responsaveis)
+        if num_novos_responsaveis > 0:
+            valor_por_responsavel_novo = despesa.valor / num_novos_responsaveis
+            for resp_assoc_data in despesa.responsaveis:
+                socio = get_socio(db, socio_id=resp_assoc_data.socio_id)
+                if socio:
+                    socio.saldo -= valor_por_responsavel_novo
+                
+                db_assoc = models.DespesaSocio(
+                    despesa_id=despesa_id,
+                    socio_id=resp_assoc_data.socio_id
+                )
+                db.add(db_assoc)
+    
+    db.commit()
+    db.refresh(db_despesa)
+    return db_despesa
+
+def delete_despesa(db: Session, despesa_id: int) -> models.Despesa:
+    """Exclui uma despesa."""
+    db_despesa = db.query(models.Despesa).filter(models.Despesa.id == despesa_id).first()
+    if not db_despesa:
+        return None
+    
+    # Excluir associações com sócios responsáveis primeiro
+    db.query(models.DespesaSocio).filter(models.DespesaSocio.despesa_id == despesa_id).delete()
+    
+    db.delete(db_despesa)
+    db.commit()
+    return db_despesa
 
 # =================================================================
 # CRUD for PlanoDeContas
@@ -278,6 +395,87 @@ def delete_simples_faixa(db: Session, faixa_id: int) -> bool:
 # CRUD e cálculo para DREMensal
 # =================================================================
 
+def calcular_pro_labore_iterativo(lucro_bruto: float, percentual_contrib_admin: float = 100.0, salario_minimo: float = 1518.0) -> tuple:
+    """
+    Calcula o pró-labore e INSS de forma iterativa.
+    
+    O pró-labore é composto por:
+    - 5% do lucro líquido (parte administrativa)
+    - 85% do lucro líquido × percentual de contribuição do administrador
+    - Limitado ao salário mínimo
+    
+    O lucro líquido depende do INSS patronal (20% do pró-labore), criando uma dependência circular.
+    IMPORTANTE: O pró-labore NÃO é despesa na DRE, apenas o INSS PATRONAL (20%) é!
+    O INSS PESSOAL (11%) é desconto do funcionário, não é despesa da empresa.
+    
+    Fórmulas:
+    - pró-labore = min(lucro_líquido * 5% + lucro_líquido * 85% * %contrib, salário_mínimo)
+    - INSS_patronal = pró-labore * 20% ← Despesa na DRE (iterativa)
+    - INSS_pessoal = pró-labore * 11% ← Desconto do funcionário (não é despesa)
+    - lucro_líquido = lucro_bruto - INSS_patronal (não desconta pró-labore nem INSS pessoal)
+    
+    Args:
+        lucro_bruto: Lucro bruto do mês (receita - impostos - despesas gerais)
+        percentual_contrib_admin: % de contribuição do administrador (0-100, ex: 50.0 para 50%)
+        salario_minimo: Valor do salário mínimo (default 1518.0)
+    
+    Returns:
+        tuple: (pro_labore, inss_patronal, inss_pessoal, lucro_liquido)
+    """
+    PERCENTUAL_ADMINISTRADOR = 0.05  # 5%
+    PERCENTUAL_LUCRO_DISPONIVEL = 0.85  # 85%
+    ALIQUOTA_INSS_PESSOAL = 0.11  # 11%
+    ALIQUOTA_INSS_PATRONAL = 0.20  # 20%
+    
+    # Se o lucro bruto for negativo ou zero, não há pró-labore
+    if lucro_bruto <= 0:
+        return (0.0, 0.0, 0.0, lucro_bruto)
+    
+    # Converter percentual de contribuição para decimal (50.0 → 0.5)
+    contrib_decimal = percentual_contrib_admin / 100.0
+    
+    # Inicializar com pró-labore = 0
+    pro_labore = 0.0
+    
+    # Iteração até convergência (diferença < R$ 0.01)
+    max_iterations = 100
+    tolerance = 0.01
+    
+    for _ in range(max_iterations):
+        # Calcular APENAS INSS PATRONAL (20%) como despesa na DRE
+        # INSS Pessoal (11%) é desconto do funcionário, não é despesa da empresa
+        inss_patronal = pro_labore * ALIQUOTA_INSS_PATRONAL
+        
+        # Calcular lucro líquido (apenas INSS patronal é despesa, pro-labore NÃO)
+        lucro_liquido = lucro_bruto - inss_patronal
+        
+        # Calcular novo pró-labore
+        # = 5% do lucro líquido + (85% do lucro líquido × % contribuição do admin)
+        parte_admin = lucro_liquido * PERCENTUAL_ADMINISTRADOR
+        parte_lucro = lucro_liquido * PERCENTUAL_LUCRO_DISPONIVEL * contrib_decimal
+        pro_labore_novo = min(parte_admin + parte_lucro, salario_minimo)
+        
+        # Se o pró-labore ficar negativo, zerar
+        if pro_labore_novo < 0:
+            pro_labore_novo = 0.0
+        
+        # Verificar convergência
+        diferenca = abs(pro_labore_novo - pro_labore)
+        if diferenca < tolerance:
+            pro_labore = pro_labore_novo
+            break
+        
+        pro_labore = pro_labore_novo
+    
+    # Calcular valores finais
+    inss_patronal = pro_labore * ALIQUOTA_INSS_PATRONAL
+    inss_pessoal = pro_labore * ALIQUOTA_INSS_PESSOAL
+    # Lucro líquido: apenas INSS patronal é despesa na DRE (INSS pessoal é desconto do funcionário)
+    lucro_liquido = lucro_bruto - inss_patronal
+    
+    return (pro_labore, inss_patronal, inss_pessoal, lucro_liquido)
+
+
 def consolidar_dre_mes(db: Session, mes: str, forcar_recalculo: bool = False) -> models.DREMensal:
     """
     Consolida ou recalcula a DRE de um mês específico (YYYY-MM).
@@ -333,19 +531,19 @@ def consolidar_dre_mes(db: Session, mes: str, forcar_recalculo: bool = False) ->
     # 4. Calcular imposto do mês
     imposto = calcular_imposto_simples(receita_bruta, aliquota_efetiva)
     
-    # 5. Calcular INSS patronal (20% sobre pró-labore)
-    # TODO: Implementar cálculo iterativo do pró-labore de André
-    # Por ora, deixar zerado (será preenchido pelo endpoint de pró-labore)
-    inss_patronal = 0.0
-    
-    # 6. Calcular despesas gerais do mês
+    # 5. Calcular despesas gerais do mês
     despesas_gerais = db.query(func.sum(models.Despesa.valor)).filter(
         models.Despesa.data >= inicio,
         models.Despesa.data <= fim
     ).scalar() or 0.0
     
-    # 7. Calcular lucro líquido
-    lucro_liquido = receita_bruta - imposto - inss_patronal - despesas_gerais
+    # 6. Calcular lucro bruto (antes de pró-labore e INSS)
+    lucro_bruto = receita_bruta - imposto - despesas_gerais
+    
+    # 7. Calcular pró-labore e INSS de forma iterativa
+    config = get_configuracao(db)
+    salario_minimo = config.salario_minimo if config else 1518.0
+    pro_labore, inss_patronal, inss_pessoal, lucro_liquido = calcular_pro_labore_iterativo(lucro_bruto, salario_minimo)
     
     # 8. Calcular reserva 10%
     reserva_10p = lucro_liquido * 0.10
@@ -358,7 +556,9 @@ def consolidar_dre_mes(db: Session, mes: str, forcar_recalculo: bool = False) ->
         dre_existente.aliquota_efetiva = aliquota_efetiva
         dre_existente.deducao = deducao
         dre_existente.imposto = imposto
+        dre_existente.pro_labore = pro_labore
         dre_existente.inss_patronal = inss_patronal
+        dre_existente.inss_pessoal = inss_pessoal
         dre_existente.despesas_gerais = despesas_gerais
         dre_existente.lucro_liquido = lucro_liquido
         dre_existente.reserva_10p = reserva_10p
@@ -374,7 +574,9 @@ def consolidar_dre_mes(db: Session, mes: str, forcar_recalculo: bool = False) ->
             aliquota_efetiva=aliquota_efetiva,
             deducao=deducao,
             imposto=imposto,
+            pro_labore=pro_labore,
             inss_patronal=inss_patronal,
+            inss_pessoal=inss_pessoal,
             despesas_gerais=despesas_gerais,
             lucro_liquido=lucro_liquido,
             reserva_10p=reserva_10p,

@@ -262,6 +262,7 @@ class Socio(Base):
 
     id = Column(Integer, primary_key=True, index=True)
     nome = Column(String(120), nullable=False, unique=True)
+    usuario_id = Column(Integer, ForeignKey("usuarios.id"), nullable=True)  # Link opcional para usuário
     funcao = Column(String(80), nullable=True)
     capital_social = Column(Float, nullable=True)
     percentual = Column(Float, nullable=True) # Percentual padrão na sociedade
@@ -270,6 +271,7 @@ class Socio(Base):
     # Relacionamentos para despesas e entradas
     despesas = relationship("DespesaSocio", back_populates="socio")
     entradas = relationship("EntradaSocio", back_populates="socio")
+    usuario = relationship("Usuario", foreign_keys=[usuario_id])
 
 class ConfiguracaoContabil(Base):
     __tablename__ = "configuracao_contabil"
@@ -277,18 +279,21 @@ class ConfiguracaoContabil(Base):
     id = Column(Integer, primary_key=True, index=True)
     percentual_administrador = Column(Float, default=0.05)
     percentual_fundo_reserva = Column(Float, default=0.10)
+    salario_minimo = Column(Float, default=1518.0)  # Salário mínimo nacional
 
 class Entrada(Base):
     __tablename__ = "entradas"
 
     id = Column(Integer, primary_key=True, index=True)
     cliente = Column(String(255), nullable=False)
+    cliente_id = Column(Integer, ForeignKey("clientes.id"), nullable=True)  # Link opcional para cliente cadastrado
     data = Column(Date, nullable=False, default=datetime.utcnow)
     valor = Column(Float, nullable=False)
     
     # Relacionamento com os sócios e seus percentuais para esta entrada
     socios = relationship("EntradaSocio", back_populates="entrada", cascade="all, delete-orphan")
     lancamentos = relationship("LancamentoContabil", back_populates="entrada", cascade="all, delete-orphan")
+    cliente_rel = relationship("Cliente")
 
 
 class Despesa(Base):
@@ -387,6 +392,8 @@ class DREMensal(Base):
     deducao = Column(Float, nullable=False, default=0.0)  # Valor da dedução
     imposto = Column(Float, nullable=False, default=0.0)  # Imposto do mês (Simples)
     inss_patronal = Column(Float, nullable=False, default=0.0)  # INSS 20% sobre pró-labore
+    inss_pessoal = Column(Float, nullable=False, default=0.0)  # INSS 11% sobre pró-labore
+    pro_labore = Column(Float, nullable=False, default=0.0)  # Pró-labore calculado (5% lucro líquido)
     despesas_gerais = Column(Float, nullable=False, default=0.0)  # Água, luz, etc.
     lucro_liquido = Column(Float, nullable=False, default=0.0)  # Receita - impostos - despesas
     reserva_10p = Column(Float, nullable=False, default=0.0)  # 10% do lucro líquido

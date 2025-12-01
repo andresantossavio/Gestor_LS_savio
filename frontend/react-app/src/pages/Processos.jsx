@@ -94,7 +94,9 @@ export default function Processos() {
                       <td style={{ padding: '12px', color: '#4b5563' }}>{p.reu || 'N/A'}</td>
                       <td style={{ padding: '12px', color: '#4b5563' }}>{p.categoria || 'N/A'}</td>
                       <td style={{ padding: '12px', color: '#4b5563' }}>{p.tipo || 'N/A'}</td>
-                      <td style={{ padding: '12px', color: '#4b5563' }}>{p.comarca || 'N/A'} - {p.uf || 'N/A'}</td>
+                      <td style={{ padding: '12px', color: '#4b5563' }}>
+                        {p.municipio ? `${p.municipio.nome} - ${p.municipio.uf}` : 'N/A'}
+                      </td>
                       <td style={{ padding: '12px', color: '#4b5563' }}>{p.cliente?.nome || 'N/A'}</td>
                       <td style={{ padding: '12px' }}>
                         <span style={{ padding: '4px 12px', borderRadius: '12px', fontSize: '12px', fontWeight: '600', backgroundColor: p.status === 'Ativo' ? '#dcfce7' : '#fee2e2', color: p.status === 'Ativo' ? '#166534' : '#991b1b' }}>

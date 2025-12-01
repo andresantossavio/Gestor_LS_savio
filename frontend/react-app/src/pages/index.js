@@ -15,4 +15,6 @@ export { default as DespesaForm } from './DespesaForm.jsx';
 export { default as SocioPage } from './SocioPage.jsx';
 export { default as DRE } from './DRE.jsx';
 export { default as DRETest } from './DRETest.jsx';
+export { default as ProLabore } from './ProLabore.jsx';
+export { default as Lancamentos } from './Lancamentos.jsx';
 export { default as ConfigSimples } from './ConfigSimples.jsx';

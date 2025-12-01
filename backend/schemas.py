@@ -157,6 +157,7 @@ class Usuario(UsuarioBase):
 # Schemas para Socio
 class SocioBase(BaseModel):
     nome: str
+    usuario_id: Optional[int] = None
     funcao: Optional[str] = None
     capital_social: Optional[float] = None
     percentual: Optional[float] = None
@@ -169,6 +170,7 @@ class SocioUpdate(SocioBase):
 
 class Socio(SocioBase):
     id: int
+    usuario: Optional[Usuario] = None
     class Config:
         from_attributes = True
 
@@ -197,6 +199,7 @@ class DespesaSocio(BaseModel):
 # Schemas para Entrada
 class EntradaBase(BaseModel):
     cliente: str
+    cliente_id: Optional[int] = None
     data: date
     valor: float
 
@@ -206,6 +209,7 @@ class EntradaCreate(EntradaBase):
 class Entrada(EntradaBase):
     id: int
     socios: List[EntradaSocio] = []
+    cliente_rel: Optional[Cliente] = None
     class Config:
         from_attributes = True
 

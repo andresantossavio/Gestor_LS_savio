@@ -20,7 +20,9 @@ import EntradaForm from './pages/EntradaForm'
 import DespesaForm from './pages/DespesaForm'
 import SocioPage from './pages/SocioPage'
 import DRE from './pages/DRE'
+import ProLabore from './pages/ProLabore'
 import ConfigSimples from './pages/ConfigSimples'
+import Lancamentos from './pages/Lancamentos'
 import Sidebar from './components/Sidebar'
 
 import './styles.css';
@@ -55,8 +57,10 @@ function App() {
             {/* Rotas de Contabilidade */}
             <Route path="/contabilidade/entradas/nova" element={<EntradaForm />} />
             <Route path="/contabilidade/despesas/nova" element={<DespesaForm />} />
+            <Route path="/contabilidade/lancamentos" element={<Lancamentos />} />
             <Route path="/contabilidade/socios" element={<SocioPage />} />
             <Route path="/contabilidade/dre" element={<DRE />} />
+            <Route path="/contabilidade/pro-labore" element={<ProLabore />} />
             <Route path="/contabilidade/config-simples" element={<ConfigSimples />} />
             <Route path="/contabilidade" element={<Contabilidade />} />
             

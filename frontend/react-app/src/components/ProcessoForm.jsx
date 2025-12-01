@@ -31,9 +31,17 @@ export default function ProcessoForm({ processoParaEditar, onFormSubmit, onCance
   // Inicializa o estado do formulário
   // Se estiver editando, mescla os dados do processo com o estado limpo
   // Isso evita que valores `null` quebrem os inputs controlados
-  const [formData, setFormData] = useState({
-    ...blankState,
-    ...(processoParaEditar || {}),
+  const [formData, setFormData] = useState(() => {
+    if (processoParaEditar) {
+      const dados = { ...blankState, ...processoParaEditar };
+      // Se tiver municipio como objeto, extrai a UF e o ID
+      if (processoParaEditar.municipio && typeof processoParaEditar.municipio === 'object') {
+        dados.uf = processoParaEditar.municipio.uf || '';
+        dados.municipio_id = processoParaEditar.municipio_id || processoParaEditar.municipio.id || '';
+      }
+      return dados;
+    }
+    return blankState;
   });
 
   const [ufs, setUfs] = useState([]);
@@ -76,7 +84,7 @@ export default function ProcessoForm({ processoParaEditar, onFormSubmit, onCance
     fetchConfigData();
   }, []);
 
-  // Carregar municípios quando UF for selecionada
+  // Carregar municípios quando UF for selecionada ou quando o componente for montado com processo para editar
   useEffect(() => {
     if (formData.uf) {
       const fetchMunicipios = async () => {
@@ -233,9 +241,17 @@ export default function ProcessoForm({ processoParaEditar, onFormSubmit, onCance
       const newObj = {};
       for (const key in obj) {
         if (obj[key] !== null && obj[key] !== '') {
-          newObj[key] = obj[key];
+          // Converte municipio_id e cliente_id para inteiro se necessário
+          if ((key === 'municipio_id' || key === 'cliente_id') && typeof obj[key] === 'string') {
+            newObj[key] = parseInt(obj[key], 10);
+          } else {
+            newObj[key] = obj[key];
+          }
         }
       }
+      // Remove o campo 'municipio' se existir (vem do backend, mas não deve ser enviado de volta)
+      delete newObj.municipio;
+      delete newObj.cliente;
       return newObj;
     };
     try {

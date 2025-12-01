@@ -9,7 +9,8 @@ const DRE = () => {
     const carregarDRE = async () => {
         setLoading(true);
         try {
-            const res = await fetch(`/api/contabilidade/dre?year=${ano}`);
+            // Sempre carregar com cálculo em tempo real
+            const res = await fetch(`/api/contabilidade/dre?year=${ano}&calcular_tempo_real=true`);
             if (!res.ok) throw new Error('Falha ao carregar DRE');
             const data = await res.json();
             setDados(data);
@@ -89,19 +90,25 @@ const DRE = () => {
         <div style={{ padding: 20 }}>
             <Header title="Demonstração do Resultado do Exercício (DRE)" />
             
-            <div style={{ marginBottom: 20, display: 'flex', gap: 10, alignItems: 'center' }}>
-                <label>Ano:</label>
-                <input 
-                    type="number" 
-                    value={ano} 
-                    onChange={(e) => setAno(parseInt(e.target.value))}
-                    min="2020"
-                    max="2030"
-                    style={{ padding: '8px', borderRadius: '4px', border: '1px solid #ccc', width: '100px' }}
-                />
-                <button onClick={carregarDRE} style={buttonStyle}>
-                    {loading ? 'Carregando...' : 'Atualizar'}
-                </button>
+            <div style={{ marginBottom: 20 }}>
+                <div style={{ display: 'flex', gap: 10, alignItems: 'center', marginBottom: 10 }}>
+                    <label>Ano:</label>
+                    <input 
+                        type="number" 
+                        value={ano} 
+                        onChange={(e) => setAno(parseInt(e.target.value))}
+                        min="2020"
+                        max="2030"
+                        style={{ padding: '8px', borderRadius: '4px', border: '1px solid #ccc', width: '100px' }}
+                    />
+                    <button onClick={carregarDRE} style={buttonStyle}>
+                        {loading ? 'Carregando...' : '🔄 Recalcular Valores'}
+                    </button>
+                </div>
+                <div style={{ padding: '10px', backgroundColor: '#e0f2fe', borderRadius: '4px', fontSize: '14px' }}>
+                    ℹ️ <strong>Os valores são calculados em tempo real</strong> com base nas entradas e despesas cadastradas. 
+                    Clique em "Consolidar" para salvar os valores definitivos do mês.
+                </div>
             </div>
 
             <div style={{ overflowX: 'auto' }}>
@@ -115,7 +122,7 @@ const DRE = () => {
                             <th style={thStyle}>Alíq. Efetiva</th>
                             <th style={thStyle}>Dedução</th>
                             <th style={thStyle}>Imposto Mês</th>
-                            <th style={thStyle}>INSS (20%)</th>
+                            <th style={thStyle}>INSS (Patronal 20%)</th>
                             <th style={thStyle}>Despesas Gerais</th>
                             <th style={thStyle}>Lucro Líquido</th>
                             <th style={thStyle}>Reserva 10%</th>
@@ -125,16 +132,23 @@ const DRE = () => {
                     <tbody>
                         {dados.map((linha) => (
                             <tr key={linha.mes} style={{
-                                backgroundColor: linha.consolidado ? '#f0fdf4' : '#fef2f2'
+                                backgroundColor: linha.consolidado ? '#f0fdf4' : '#fef9e7'
                             }}>
-                                <td style={tdStyle}>{linha.mes}</td>
+                                <td style={tdStyle}>
+                                    {linha.mes}
+                                    {!linha.consolidado && (
+                                        <span style={{ marginLeft: '5px', fontSize: '11px', color: '#d97706' }}>
+                                            ⚡ tempo real
+                                        </span>
+                                    )}
+                                </td>
                                 <td style={tdStyle}>{formatarMoeda(linha.receita_bruta)}</td>
                                 <td style={tdStyle}>{formatarMoeda(linha.receita_12m)}</td>
                                 <td style={tdStyle}>{formatarPercentual(linha.aliquota)}</td>
                                 <td style={tdStyle}>{formatarPercentual(linha.aliquota_efetiva)}</td>
                                 <td style={tdStyle}>{formatarMoeda(linha.deducao)}</td>
                                 <td style={tdStyle}>{formatarMoeda(linha.imposto)}</td>
-                                <td style={tdStyle}>{formatarMoeda(linha.inss_patronal)}</td>
+                                <td style={tdStyle}>{formatarMoeda(linha.inss_patronal || 0)}</td>
                                 <td style={tdStyle}>{formatarMoeda(linha.despesas_gerais)}</td>
                                 <td style={tdStyle}>{formatarMoeda(linha.lucro_liquido)}</td>
                                 <td style={tdStyle}>{formatarMoeda(linha.reserva_10p)}</td>
@@ -172,11 +186,17 @@ const DRE = () => {
 
             <div style={{ marginTop: 20, padding: 15, backgroundColor: '#f9fafb', borderRadius: 8 }}>
                 <h3 style={{ marginTop: 0 }}>Legenda</h3>
-                <p><span style={{ display: 'inline-block', width: 20, height: 20, backgroundColor: '#f0fdf4', border: '1px solid #ccc', marginRight: 8 }}></span>Mês consolidado</p>
-                <p><span style={{ display: 'inline-block', width: 20, height: 20, backgroundColor: '#fef2f2', border: '1px solid #ccc', marginRight: 8 }}></span>Mês não consolidado</p>
-                <p style={{ fontSize: 14, color: '#6b7280' }}>
-                    <strong>Nota:</strong> A consolidação calcula os valores definitivos do mês. Você pode recalcular um mês consolidado para corrigir eventual erro ou atualização de dados.
+                <p><span style={{ display: 'inline-block', width: 20, height: 20, backgroundColor: '#f0fdf4', border: '1px solid #ccc', marginRight: 8 }}></span>✅ Mês consolidado (valores salvos no banco)</p>
+                <p><span style={{ display: 'inline-block', width: 20, height: 20, backgroundColor: '#fef9e7', border: '1px solid #ccc', marginRight: 8 }}></span>⚡ Valores calculados em tempo real</p>
+                <p style={{ fontSize: 14, color: '#6b7280', marginTop: 15 }}>
+                    <strong>Como funciona:</strong>
                 </p>
+                <ul style={{ fontSize: 14, color: '#6b7280', marginTop: 5 }}>
+                    <li>Toda vez que você adiciona uma <strong>entrada</strong> ou <strong>despesa</strong>, os valores da DRE são recalculados automaticamente.</li>
+                    <li>Os meses com valores em <strong>tempo real</strong> são atualizados sempre que você clica em "🔄 Recalcular Valores".</li>
+                    <li>Clique em <strong>"Consolidar"</strong> para salvar os valores definitivos do mês no banco de dados.</li>
+                    <li>Meses consolidados podem ser <strong>recalculados</strong> se houver necessidade de correção.</li>
+                </ul>
             </div>
         </div>
     );

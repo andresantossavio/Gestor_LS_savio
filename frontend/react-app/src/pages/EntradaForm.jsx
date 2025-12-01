@@ -7,9 +7,11 @@ const apiBase = '/api/contabilidade';
 const EntradaForm = () => {
     const navigate = useNavigate();
     const [socios, setSocios] = useState([]);
+    const [clientes, setClientes] = useState([]);
     const [error, setError] = useState(null);
     const [formData, setFormData] = useState({
         cliente: '',
+        cliente_id: null,
         data: new Date().toISOString().split('T')[0], // Default to today
         valor: '',
         socios: [] // Will hold { socio_id, percentual }
@@ -26,12 +28,39 @@ const EntradaForm = () => {
                 setError(err.message);
             }
         };
+        
+        // Carregar clientes para associá-los
+        const fetchClientes = async () => {
+            try {
+                const response = await fetch('/api/clientes');
+                if (!response.ok) throw new Error('Falha ao carregar clientes.');
+                setClientes(await response.json());
+            } catch (err) {
+                setError(err.message);
+            }
+        };
+        
         fetchSocios();
+        fetchClientes();
     }, []);
 
     const handleInputChange = (e) => {
         const { name, value } = e.target;
         setFormData(prev => ({ ...prev, [name]: value }));
+    };
+
+    const handleClienteChange = (e) => {
+        const clienteId = e.target.value;
+        if (clienteId) {
+            const clienteSelecionado = clientes.find(c => c.id === parseInt(clienteId));
+            setFormData(prev => ({
+                ...prev,
+                cliente_id: parseInt(clienteId),
+                cliente: clienteSelecionado ? clienteSelecionado.nome : ''
+            }));
+        } else {
+            setFormData(prev => ({ ...prev, cliente_id: null, cliente: '' }));
+        }
     };
 
     const handleSocioPercentualChange = (socio_id, percentualStr) => {
@@ -82,7 +111,38 @@ const EntradaForm = () => {
             <Header title="Registrar Nova Entrada" />
             
             <form onSubmit={handleSubmit} style={formContainerStyle}>
-                <input name="cliente" value={formData.cliente} onChange={handleInputChange} placeholder="Nome do Cliente" required style={inputStyle}/>
+                <div style={{ marginBottom: '10px' }}>
+                    <label style={{ display: 'block', marginBottom: '5px', fontWeight: 'bold' }}>Cliente Cadastrado:</label>
+                    <select 
+                        value={formData.cliente_id || ''} 
+                        onChange={handleClienteChange} 
+                        style={inputStyle}
+                    >
+                        <option value="">Selecione um cliente (opcional)</option>
+                        {clientes.map(cliente => (
+                            <option key={cliente.id} value={cliente.id}>
+                                {cliente.nome} {cliente.cpf_cnpj ? `(${cliente.cpf_cnpj})` : ''}
+                            </option>
+                        ))}
+                    </select>
+                </div>
+                
+                <div style={{ marginBottom: '10px' }}>
+                    <label style={{ display: 'block', marginBottom: '5px', fontWeight: 'bold' }}>Nome do Cliente (texto livre):</label>
+                    <input 
+                        name="cliente" 
+                        value={formData.cliente} 
+                        onChange={handleInputChange} 
+                        placeholder="Nome do Cliente" 
+                        required 
+                        style={inputStyle}
+                        readOnly={!!formData.cliente_id}
+                    />
+                    <small style={{ color: '#666' }}>
+                        {formData.cliente_id ? 'Preenchido automaticamente do cliente selecionado' : 'Ou digite um nome manualmente'}
+                    </small>
+                </div>
+                
                 <input name="valor" type="number" step="0.01" value={formData.valor} onChange={handleInputChange} placeholder="Valor da Entrada (R$)" required style={inputStyle}/>
                 <input name="data" type="date" value={formData.data} onChange={handleInputChange} required style={inputStyle}/>
                 

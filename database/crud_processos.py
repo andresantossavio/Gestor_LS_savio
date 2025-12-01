@@ -1,9 +1,12 @@
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, joinedload
 from . import models, crud_clientes
 
 def buscar_processo(db: Session, processo_id: int):
     """Busca um processo pelo ID."""
-    return db.query(models.Processo).filter(models.Processo.id == processo_id).first()
+    return db.query(models.Processo).options(
+        joinedload(models.Processo.cliente),
+        joinedload(models.Processo.municipio)
+    ).filter(models.Processo.id == processo_id).first()
 
 def listar_processos(db: Session):
     """Lista todos os processos."""

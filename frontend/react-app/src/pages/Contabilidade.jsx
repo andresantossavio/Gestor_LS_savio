@@ -3,35 +3,6 @@ import { Link } from 'react-router-dom';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, PieChart, Pie, Cell } from 'recharts';
 import Header from '../components/Header';
 
-// --- Dados de Exemplo (Mocks) ---
-// No futuro, esses dados virão da sua API.
-
-const balancoPatrimonialData = {
-    ativo: 15000,
-    passivo: 5000,
-    patrimonioLiquido: 10000,
-};
-
-const dreData = [
-    { name: 'Receita Bruta', valor: 20000 },
-    { name: 'Despesas', valor: -5000 },
-    { name: 'Lucro Bruto', valor: 15000 },
-    { name: 'Impostos', valor: -2000 },
-    { name: 'Lucro Líquido', valor: 13000 },
-];
-
-const lucrosData = {
-    disponiveis: 13000,
-    distribuidos: 10000,
-    fundoReserva: 2000,
-    proLabore: 1000,
-};
-
-const distribuicaoSociosData = [
-    { name: 'Sócio André', value: 6000 },
-    { name: 'Sócio Bruna', value: 4000 },
-];
-
 const COLORS = ['#0088FE', '#00C49F', '#FFBB28', '#FF8042'];
 
 // --- Componentes de Widget ---
@@ -52,6 +23,12 @@ const Widget = ({ title, children }) => (
 
 const Dashboard = () => {
     const [canRenderCharts, setCanRenderCharts] = useState(true);
+    const [loading, setLoading] = useState(true);
+    const [balancoPatrimonialData, setBalancoPatrimonialData] = useState({ ativo: 0, passivo: 0, patrimonioLiquido: 0 });
+    const [dreData, setDreData] = useState([]);
+    const [lucrosData, setLucrosData] = useState({ disponiveis: 0, distribuidos: 0, fundoReserva: 0, proLabore: 0 });
+    const [distribuicaoSociosData, setDistribuicaoSociosData] = useState([]);
+    const [ano, setAno] = useState(new Date().getFullYear());
 
     useEffect(() => { 
         // Simple guard: disable charts if container width might be 0
@@ -66,23 +43,44 @@ const Dashboard = () => {
             setCanRenderCharts(false);
         }
     }, []);
-    // Hooks para carregar dados da API (exemplo)
-    // const [balanco, setBalanco] = useState(null);
-    // useEffect(() => {
-    //   fetch('/api/contabilidade/balanco').then(res => res.json()).then(setBalanco);
-    // }, []);
+
+    useEffect(() => {
+        carregarDashboard();
+    }, []);
+
+    const carregarDashboard = async () => {
+        try {
+            setLoading(true);
+            const response = await fetch('/api/contabilidade/dashboard-summary');
+            if (response.ok) {
+                const data = await response.json();
+                setBalancoPatrimonialData(data.balancoPatrimonial);
+                setDreData(data.dreData);
+                setLucrosData(data.lucros);
+                setDistribuicaoSociosData(data.distribuicaoSocios);
+                setAno(data.ano);
+            } else {
+                console.error('Erro ao carregar dashboard:', response.statusText);
+            }
+        } catch (error) {
+            console.error('Erro ao carregar dashboard:', error);
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    if (loading) {
+        return (
+            <div style={{ padding: 20 }}>
+                <Header title="Painel de Contabilidade" />
+                <p>Carregando dados...</p>
+            </div>
+        );
+    }
 
     return (
         <div style={{ padding: 20 }}>
-            <Header title="Painel de Contabilidade" />
-
-            <div style={{ marginBottom: '20px', display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
-                <Link to="/contabilidade/entradas/nova" style={buttonStyle}>+ Nova Entrada</Link>
-                <Link to="/contabilidade/despesas/nova" style={buttonStyle}>+ Nova Despesa</Link>
-                <Link to="/contabilidade/socios" style={buttonStyle}>Gerenciar Sócios</Link>
-                <Link to="/contabilidade/dre" style={buttonStyle}>📊 DRE Mensal</Link>
-                <Link to="/contabilidade/config-simples" style={buttonStyle}>⚙️ Config Simples</Link>
-            </div>
+            <Header title={`Painel de Contabilidade - ${ano}`} />
 
             <div style={{ display: 'flex', flexWrap: 'wrap', gap: '20px' }}>
                 <Widget title="Balanço Patrimonial">
@@ -154,7 +152,26 @@ const buttonStyle = {
     textDecoration: 'none',
     cursor: 'pointer',
     fontSize: '14px',
+    display: 'inline-block',
+    marginRight: '10px'
 };
 
+const Contabilidade = () => {
+    return (
+        <div>
+            <Header title="Contabilidade" />
+            <div style={{ display: 'flex', gap: '10px', marginBottom: '20px', flexWrap: 'wrap' }}>
+                <Link to="/contabilidade/entradas/nova" style={buttonStyle}>+ Nova Entrada</Link>
+                <Link to="/contabilidade/despesas/nova" style={buttonStyle}>+ Nova Despesa</Link>
+                <Link to="/contabilidade/lancamentos" style={buttonStyle}>📋 Gerenciar Lançamentos</Link>
+                <Link to="/contabilidade/socios" style={buttonStyle}>Gerenciar Sócios</Link>
+                <Link to="/contabilidade/dre" style={buttonStyle}>📊 DRE Mensal</Link>
+                <Link to="/contabilidade/pro-labore" style={buttonStyle}>💰 Pró-labore</Link>
+                <Link to="/contabilidade/config-simples" style={buttonStyle}>⚙️ Config Simples</Link>
+            </div>
+            <Dashboard />
+        </div>
+    );
+};
 
-export default Dashboard;
+export default Contabilidade;

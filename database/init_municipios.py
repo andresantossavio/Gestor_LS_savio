@@ -1,9 +1,10 @@
 """
 Script para popular a tabela de municípios com todos os municípios brasileiros.
-Fonte: IBGE - 5570 municípios
+Fonte: API do IBGE - 5570 municípios
 """
 import sys
 from pathlib import Path
+import requests
 
 # Adiciona o diretório raiz ao path
 sys.path.insert(0, str(Path(__file__).parent.parent))
@@ -12,73 +13,79 @@ from sqlalchemy.orm import Session
 from database.database import SessionLocal, engine
 from database.models import Base, Municipio
 
-# Lista completa de municípios brasileiros (amostra - em produção usar arquivo JSON/CSV completo)
-# Este é um subset para exemplo. Em produção, carregar de arquivo CSV do IBGE
-MUNICIPIOS_BRASIL = [
-    # Acre
-    {"codigo_ibge": "1200013", "nome": "Acrelândia", "uf": "AC"},
-    {"codigo_ibge": "1200054", "nome": "Assis Brasil", "uf": "AC"},
-    {"codigo_ibge": "1200104", "nome": "Brasiléia", "uf": "AC"},
-    {"codigo_ibge": "1200138", "nome": "Bujari", "uf": "AC"},
-    {"codigo_ibge": "1200179", "nome": "Capixaba", "uf": "AC"},
-    {"codigo_ibge": "1200203", "nome": "Cruzeiro do Sul", "uf": "AC"},
-    {"codigo_ibge": "1200252", "nome": "Epitaciolândia", "uf": "AC"},
-    {"codigo_ibge": "1200302", "nome": "Feijó", "uf": "AC"},
-    {"codigo_ibge": "1200328", "nome": "Jordão", "uf": "AC"},
-    {"codigo_ibge": "1200336", "nome": "Mâncio Lima", "uf": "AC"},
-    {"codigo_ibge": "1200344", "nome": "Manoel Urbano", "uf": "AC"},
-    {"codigo_ibge": "1200351", "nome": "Marechal Thaumaturgo", "uf": "AC"},
-    {"codigo_ibge": "1200385", "nome": "Plácido de Castro", "uf": "AC"},
-    {"codigo_ibge": "1200393", "nome": "Porto Acre", "uf": "AC"},
-    {"codigo_ibge": "1200401", "nome": "Porto Walter", "uf": "AC"},
-    {"codigo_ibge": "1200427", "nome": "Rio Branco", "uf": "AC"},
-    {"codigo_ibge": "1200435", "nome": "Rodrigues Alves", "uf": "AC"},
-    {"codigo_ibge": "1200450", "nome": "Santa Rosa do Purus", "uf": "AC"},
-    {"codigo_ibge": "1200500", "nome": "Sena Madureira", "uf": "AC"},
-    {"codigo_ibge": "1200542", "nome": "Senador Guiomard", "uf": "AC"},
-    {"codigo_ibge": "1200559", "nome": "Tarauacá", "uf": "AC"},
-    {"codigo_ibge": "1200609", "nome": "Xapuri", "uf": "AC"},
+
+def fetch_municipios_ibge():
+    """
+    Busca todos os municípios brasileiros da API do IBGE.
     
-    # Principais capitais e cidades grandes (adicionar mais conforme necessário)
-    {"codigo_ibge": "3550308", "nome": "São Paulo", "uf": "SP"},
-    {"codigo_ibge": "3304557", "nome": "Rio de Janeiro", "uf": "RJ"},
-    {"codigo_ibge": "3106200", "nome": "Belo Horizonte", "uf": "MG"},
-    {"codigo_ibge": "4106902", "nome": "Curitiba", "uf": "PR"},
-    {"codigo_ibge": "4314902", "nome": "Porto Alegre", "uf": "RS"},
-    {"codigo_ibge": "2927408", "nome": "Salvador", "uf": "BA"},
-    {"codigo_ibge": "2304400", "nome": "Fortaleza", "uf": "CE"},
-    {"codigo_ibge": "5300108", "nome": "Brasília", "uf": "DF"},
-    {"codigo_ibge": "1302603", "nome": "Manaus", "uf": "AM"},
-    {"codigo_ibge": "2611606", "nome": "Recife", "uf": "PE"},
-    {"codigo_ibge": "5208707", "nome": "Goiânia", "uf": "GO"},
-    {"codigo_ibge": "1501402", "nome": "Belém", "uf": "PA"},
-    {"codigo_ibge": "2111300", "nome": "São Luís", "uf": "MA"},
-    {"codigo_ibge": "2704302", "nome": "Maceió", "uf": "AL"},
-    {"codigo_ibge": "2507507", "nome": "João Pessoa", "uf": "PB"},
-    {"codigo_ibge": "2800308", "nome": "Aracaju", "uf": "SE"},
-    {"codigo_ibge": "2211001", "nome": "Teresina", "uf": "PI"},
-    {"codigo_ibge": "5103403", "nome": "Cuiabá", "uf": "MT"},
-    {"codigo_ibge": "2408102", "nome": "Natal", "uf": "RN"},
-    {"codigo_ibge": "1100205", "nome": "Porto Velho", "uf": "RO"},
-    {"codigo_ibge": "1400100", "nome": "Boa Vista", "uf": "RR"},
-    {"codigo_ibge": "1600303", "nome": "Macapá", "uf": "AP"},
-    {"codigo_ibge": "1721000", "nome": "Palmas", "uf": "TO"},
-    {"codigo_ibge": "5002704", "nome": "Campo Grande", "uf": "MS"},
-    {"codigo_ibge": "1200401", "nome": "Rio Branco", "uf": "AC"},
-]
+    Returns:
+        list: Lista de dicionários com dados dos municípios
+    """
+    url = "https://servicodados.ibge.gov.br/api/v1/localidades/municipios"
+    
+    print("🌐 Buscando municípios da API do IBGE...")
+    
+    try:
+        response = requests.get(url, timeout=30)
+        response.raise_for_status()
+        
+        municipios_raw = response.json()
+        print(f"✅ {len(municipios_raw)} municípios obtidos da API do IBGE")
+        
+        # Converte para o formato do banco de dados
+        municipios_formatados = []
+        
+        for mun in municipios_raw:
+            try:
+                municipio = {
+                    "codigo_ibge": str(mun["id"]),
+                    "nome": mun["nome"],
+                    "uf": mun["microrregiao"]["mesorregiao"]["UF"]["sigla"]
+                }
+                municipios_formatados.append(municipio)
+            except (KeyError, TypeError) as e:
+                print(f"⚠️  Município com dados incompletos: {mun.get('nome', 'desconhecido')} - {e}")
+                continue
+        
+        # Estatísticas por UF
+        ufs = {}
+        for m in municipios_formatados:
+            uf = m["uf"]
+            ufs[uf] = ufs.get(uf, 0) + 1
+        
+        print(f"\n📊 Municípios por UF obtidos:")
+        for uf in sorted(ufs.keys()):
+            print(f"   {uf}: {ufs[uf]} municípios")
+        
+        return municipios_formatados
+        
+    except requests.RequestException as e:
+        print(f"❌ Erro ao buscar dados da API do IBGE: {e}")
+        return []
 
 
 def popular_municipios(db: Session):
     """
     Popula a tabela de municípios com dados do IBGE.
     """
-    print("Iniciando população da tabela de municípios...")
+    print("\n" + "=" * 60)
+    print("IMPORTAÇÃO DE MUNICÍPIOS")
+    print("=" * 60 + "\n")
+    
+    # Busca dados da API
+    municipios = fetch_municipios_ibge()
+    
+    if not municipios:
+        print("❌ Nenhum município obtido da API. Encerrando.")
+        return
+    
+    print(f"\n💾 Iniciando inserção de {len(municipios)} municípios no banco de dados...")
     
     # Verifica se já existem municípios
     count_existente = db.query(Municipio).count()
     if count_existente > 0:
         print(f"⚠️  Já existem {count_existente} municípios cadastrados.")
-        resposta = input("Deseja continuar e adicionar os novos? (s/n): ")
+        resposta = input("Deseja continuar e adicionar apenas os novos? (s/n): ")
         if resposta.lower() != 's':
             print("Operação cancelada.")
             return
@@ -87,10 +94,11 @@ def popular_municipios(db: Session):
     municipios_novos = []
     municipios_duplicados = 0
     
-    for mun_data in MUNICIPIOS_BRASIL:
-        # Verifica se já existe
+    for mun_data in municipios:
+        # Verifica se já existe pelo nome e UF (devido à constraint UNIQUE)
         existe = db.query(Municipio).filter(
-            Municipio.codigo_ibge == mun_data["codigo_ibge"]
+            Municipio.nome == mun_data["nome"],
+            Municipio.uf == mun_data["uf"]
         ).first()
         
         if not existe:
@@ -118,7 +126,7 @@ def popular_municipios(db: Session):
     print(f"\n📊 Total de municípios no banco: {total}")
     
     # Contagem por UF
-    print("\n📍 Municípios por UF:")
+    print("\n📍 Municípios por UF no banco:")
     from sqlalchemy import func
     stats = db.query(
         Municipio.uf,
@@ -127,12 +135,16 @@ def popular_municipios(db: Session):
     
     for uf, count in stats:
         print(f"   {uf}: {count} municípios")
+    
+    # Destaque para RS
+    total_rs = db.query(Municipio).filter(Municipio.uf == "RS").count()
+    print(f"\n🎯 Total de municípios do RS: {total_rs}")
 
 
 def main():
     """Função principal para executar o script."""
     print("=" * 60)
-    print("INICIALIZAÇÃO DA BASE DE MUNICÍPIOS BRASILEIROS")
+    print("INICIALIZAÇÃO DA BASE DE MUNICÍPIOS BRASILEIROS - IBGE")
     print("=" * 60)
     print()
     
@@ -154,9 +166,6 @@ def main():
     print("INICIALIZAÇÃO CONCLUÍDA")
     print("=" * 60)
     print()
-    print("⚠️  IMPORTANTE: Este script contém apenas uma amostra de municípios.")
-    print("   Para produção, importe o arquivo completo do IBGE com 5570 municípios.")
-    print("   Arquivo pode ser obtido em: https://servicodados.ibge.gov.br/api/v1/localidades/municipios")
 
 
 if __name__ == "__main__":

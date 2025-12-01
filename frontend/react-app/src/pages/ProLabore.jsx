@@ -22,7 +22,7 @@ function ProLabore() {
 
   const carregarSocios = async () => {
     try {
-      const response = await fetch('http://localhost:8000/api/contabilidade/socios');
+      const response = await fetch('/api/contabilidade/socios');
       if (!response.ok) throw new Error('Erro ao carregar sócios');
       const data = await response.json();
       
@@ -46,7 +46,7 @@ function ProLabore() {
     setLoading(true);
     setError(null);
     try {
-      const response = await fetch(`http://localhost:8000/api/contabilidade/pro-labore/${socioSelecionado.id}?year=${ano}`);
+      const response = await fetch(`/api/contabilidade/pro-labore/${socioSelecionado.id}?year=${ano}`);
       if (!response.ok) {
         const errorText = await response.text();
         throw new Error(`Erro ao carregar dados: ${errorText}`);

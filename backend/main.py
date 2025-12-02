@@ -171,49 +171,6 @@ def listar_entradas(skip: int = 0, limit: int = 100, db: Session = Depends(get_d
 @api_router.post("/contabilidade/entradas", response_model=schemas.Entrada)
 def criar_entrada(entrada: schemas.EntradaCreate, db: Session = Depends(get_db)):
     nova_entrada = crud_contabilidade.create_entrada(db, entrada)
-    
-    # Tentar criar lançamento contábil automaticamente
-    try:
-        crud_plano_contas.lancar_entrada_honorarios(db, nova_entrada.id)
-    except Exception as e:
-        print(f"⚠️  Erro ao criar lançamento contábil para entrada {nova_entrada.id}: {e}")
-    
-    # Gerar pagamentos pendentes automaticamente
-    try:
-        from utils.simples import calcular_receita_12_meses
-        
-        # Calcula receita 12 meses
-        receita_12m = calcular_receita_12_meses(db, nova_entrada.data)
-        
-        # Busca sócios com percentuais
-        socios_entrada = db.query(models.EntradaSocio).filter(
-            models.EntradaSocio.entrada_id == nova_entrada.id
-        ).all()
-        
-        administrador_id = None
-        socios_data = []
-        for se in socios_entrada:
-            socio = db.query(models.Socio).filter(models.Socio.id == se.socio_id).first()
-            if socio:
-                # Identifica o administrador pela função
-                is_admin = socio.funcao and "administrador" in socio.funcao.lower()
-                if is_admin:
-                    administrador_id = socio.id
-                
-                socios_data.append({
-                    "id": socio.id,
-                    "nome": socio.nome,
-                    "percentual": se.percentual,
-                    "funcao": socio.funcao,
-                    "is_admin": is_admin
-                })
-        
-        # NÃO GERAR PENDÊNCIAS AUTOMATICAMENTE POR ENTRADA
-        # Pendências devem ser geradas consolidadas por mês via endpoint dedicado
-        # /api/pagamentos-pendentes/gerar/{mes}/{ano}
-    except Exception as e:
-        print(f"⚠️  Erro ao processar entrada {nova_entrada.id}: {e}")
-    
     return nova_entrada
 
 @api_router.put("/contabilidade/entradas/{entrada_id}", response_model=schemas.Entrada)
@@ -225,9 +182,11 @@ def atualizar_entrada(entrada_id: int, entrada: schemas.EntradaCreate, db: Sessi
 
 @api_router.delete("/contabilidade/entradas/{entrada_id}")
 def deletar_entrada(entrada_id: int, db: Session = Depends(get_db)):
-    db_entrada = crud_contabilidade.delete_entrada(db, entrada_id)
-    if not db_entrada:
+    entrada_temp = crud_contabilidade.get_entrada(db, entrada_id)
+    if not entrada_temp:
         raise HTTPException(status_code=404, detail="Entrada não encontrada")
+    
+    crud_contabilidade.delete_entrada(db, entrada_id)
     return {"status": "ok"}
 
 # --- Despesas ---
@@ -238,13 +197,6 @@ def listar_despesas(skip: int = 0, limit: int = 100, db: Session = Depends(get_d
 @api_router.post("/contabilidade/despesas", response_model=schemas.Despesa)
 def criar_despesa(despesa: schemas.DespesaCreate, db: Session = Depends(get_db)):
     nova_despesa = crud_contabilidade.create_despesa(db, despesa)
-    
-    # Tentar criar lançamento contábil automaticamente
-    try:
-        crud_plano_contas.lancar_despesa(db, nova_despesa.id)
-    except Exception as e:
-        print(f"⚠️  Erro ao criar lançamento contábil para despesa {nova_despesa.id}: {e}")
-    
     return nova_despesa
 
 @api_router.put("/contabilidade/despesas/{despesa_id}", response_model=schemas.Despesa)
@@ -256,9 +208,11 @@ def atualizar_despesa(despesa_id: int, despesa: schemas.DespesaCreate, db: Sessi
 
 @api_router.delete("/contabilidade/despesas/{despesa_id}")
 def deletar_despesa(despesa_id: int, db: Session = Depends(get_db)):
-    db_despesa = crud_contabilidade.delete_despesa(db, despesa_id)
-    if not db_despesa:
+    despesa_temp = crud_contabilidade.get_despesa(db, despesa_id)
+    if not despesa_temp:
         raise HTTPException(status_code=404, detail="Despesa não encontrada")
+    
+    crud_contabilidade.delete_despesa(db, despesa_id)
     return {"status": "ok"}
 
 # --- DRE ---
@@ -420,6 +374,84 @@ def listar_dre_ano(year: int, calcular_tempo_real: bool = False, db: Session = D
     return resultado
 
 
+# --- Distribuição de Lucros ---
+@api_router.get("/contabilidade/lucros")
+def listar_lucros_ano(year: int, calcular_tempo_real: bool = True, db: Session = Depends(get_db)):
+    """
+    Retorna a distribuição de lucros para todos os sócios em cada mês do ano.
+    
+    Distribuição:
+    - 5% do lucro líquido para administrador
+    - 10% do lucro líquido para fundo
+    - 85% do lucro líquido distribuído entre sócios conforme participação nas entradas
+    """
+    from utils.datas import meses_do_ano
+    
+    meses = meses_do_ano(year)
+    
+    # Buscar todos os sócios
+    socios = crud_contabilidade.get_socios(db)
+    
+    # Preparar cabeçalhos dos sócios
+    socios_headers = [{"id": s.id, "nome": s.nome} for s in socios]
+    
+    resultado_meses = []
+    
+    for mes in meses:
+        # Extrair ano e mês do formato "YYYY-MM"
+        year_int, month_int = map(int, mes.split('-'))
+        
+        # Buscar DRE consolidada
+        dre = crud_contabilidade.get_dre_mensal(db, mes)
+        
+        consolidado = False
+        lucro_liquido = 0.0
+        
+        if dre and dre.consolidado:
+            # Usar dados consolidados
+            lucro_liquido = float(dre.lucro_liquido or 0)
+            consolidado = True
+        elif calcular_tempo_real:
+            # Calcular em tempo real
+            dre_calculada = _calcular_dre_mes(db, year_int, month_int)
+            if dre_calculada:
+                lucro_liquido = float(dre_calculada.get("lucro_liquido", 0))
+            consolidado = False
+        
+        # Calcular distribuições
+        admin_5p = float(lucro_liquido) * 0.05
+        fundo_10p = float(lucro_liquido) * 0.10
+        disponivel_85p = float(lucro_liquido) * 0.85
+        
+        # Calcular participação de cada sócio
+        socios_distribuicao = []
+        
+        for socio in socios:
+            percentual = crud_contabilidade.calcular_percentual_participacao_socio(db, socio.id, mes)
+            valor = disponivel_85p * (percentual / 100.0)
+            
+            socios_distribuicao.append({
+                "socio_id": socio.id,
+                "socio_nome": socio.nome,
+                "percentual": float(percentual),
+                "valor": float(valor)
+            })
+        
+        resultado_meses.append({
+            "mes": mes,
+            "admin_5p": float(admin_5p),
+            "fundo_10p": float(fundo_10p),
+            "consolidado": consolidado,
+            "socios": socios_distribuicao
+        })
+    
+    return {
+        "ano": year,
+        "socios_headers": socios_headers,
+        "meses": resultado_meses
+    }
+
+
 # --- Pró‑Labore (por sócio administrador) ---
 @api_router.get("/contabilidade/pro-labore/{socio_id}")
 def obter_pro_labore_socio(
@@ -451,6 +483,9 @@ def obter_pro_labore_socio(
         raise HTTPException(status_code=400, detail="Endpoint disponível apenas para sócio administrador")
 
     meses = meses_do_ano(year)
+    # Usar configuração de salário mínimo (fallback para 1518.0)
+    config = crud_contabilidade.get_configuracao(db)
+    salario_minimo = config.salario_minimo if config else 1518.0
     saida = []
 
     for mes_str in meses:
@@ -513,14 +548,19 @@ def obter_pro_labore_socio(
             ).scalar() or 0.0
             lucro_bruto = receita_bruta - imposto - despesas_gerais
 
-            config = crud_contabilidade.get_configuracao(db)
-            salario_minimo = config.salario_minimo if config else 1518.0
             pro_labore_bruto, inss_patronal, inss_pessoal, lucro_liquido = crud_contabilidade.calcular_pro_labore_iterativo(
                 lucro_bruto, percentual_contrib, salario_minimo
             )
-
-        pro_labore_liquido = pro_labore_bruto * 0.89
-        lucro_final_socio = pro_labore_liquido  # para admin
+        # Pró‑labore líquido (desconto INSS pessoal 11%)
+        pro_labore_liquido = round(pro_labore_bruto * 0.89, 2)
+        # Distribuição bruta do administrador: 5% + 85% × % contribuição
+        contrib_decimal = (percentual_contrib / 100.0) if percentual_contrib else 0.0
+        distribuicao_admin_bruta = (lucro_liquido * 0.05) + (lucro_liquido * 0.85 * contrib_decimal)
+        # Excedente do pró‑labore (bruto) acima do salário mínimo
+        excedente_bruto = max(0.0, distribuicao_admin_bruta - salario_minimo)
+        excedente_liquido = round(excedente_bruto * 0.89, 2)
+        # Para administrador, "Lucro (líquido)" exibido na página é o excedente líquido
+        lucro_final_socio = excedente_liquido
 
         saida.append({
             "ano": int(mes_str.split('-')[0]),
@@ -540,9 +580,10 @@ def obter_pro_labore_socio(
 
 @api_router.post("/contabilidade/dre/consolidar")
 def consolidar_dre(mes: str, forcar: bool = False, db: Session = Depends(get_db)):
-    """Consolida ou recalcula a DRE de um mês específico."""
+    """Consolida a DRE de um mês - apenas congela os valores calculados."""
     try:
         dre = crud_contabilidade.consolidar_dre_mes(db, mes, forcar_recalculo=forcar)
+        
         return {
             "mes": dre.mes,
             "receita_bruta": dre.receita_bruta,
@@ -566,14 +607,21 @@ def consolidar_dre(mes: str, forcar: bool = False, db: Session = Depends(get_db)
 @api_router.delete("/contabilidade/dre/consolidar")
 def desconsolidar_dre(mes: str, db: Session = Depends(get_db)):
     """Desconsolida um mês de DRE, permitindo recalcular posteriormente."""
+    # Limpar pagamentos pendentes antes de desconsolidar
+    from database import crud_pagamentos_pendentes
+    ano_ref, mes_ref = map(int, mes.split('-'))
+    qtd_removida = crud_pagamentos_pendentes.limpar_pagamentos_mes(db, mes_ref, ano_ref)
+    print("✓ {} pagamento(s) pendente(s) removido(s) ao desconsolidar {}".format(qtd_removida, mes))
+
     try:
         dre = crud_contabilidade.desconsolidar_dre_mes(db, mes)
         if not dre:
-            raise HTTPException(status_code=404, detail=f"DRE do mês {mes} não encontrado")
+            raise HTTPException(status_code=404, detail="DRE do mês {} não encontrado".format(mes))
         return {
             "mes": dre.mes,
             "consolidado": dre.consolidado,
-            "message": f"Mês {mes} desconsolidado com sucesso"
+            "pagamentos_removidos": qtd_removida,
+            "message": "Mês {} desconsolidado com sucesso".format(mes)
         }
     except HTTPException:
         raise
@@ -1329,12 +1377,48 @@ def _calcular_dre_mes(db: Session, year: int, month: int):
         models.Despesa.data <= fim
     ).scalar() or 0.0
     
-    # Cálculo revertido para manter consistência com DRE consolidada
-    # Pró-labore e INSS não entram no cálculo (zerados)
-    pro_labore = 0.0
-    inss_patronal = 0.0
-    inss_pessoal = 0.0
-    lucro_liquido = receita_bruta - imposto - despesas_gerais
+    # Calcular lucro bruto (antes de pró-labore e INSS)
+    lucro_bruto = receita_bruta - imposto - despesas_gerais
+    
+    # Calcular percentual de contribuição do administrador no mês
+    admin_socio = db.query(models.Socio).filter(
+        models.Socio.funcao.ilike('%administrador%')
+    ).first()
+    
+    percentual_contrib_admin = 100.0  # Default se não tiver sócio admin
+    
+    if admin_socio:
+        # Calcular contribuição do admin no mês
+        entradas_mes = db.query(models.Entrada).filter(
+            models.Entrada.data >= inicio,
+            models.Entrada.data <= fim
+        ).all()
+        
+        contribuicao_admin = 0.0
+        faturamento_total = 0.0
+        
+        for entrada in entradas_mes:
+            faturamento_total += float(entrada.valor or 0)
+            entrada_socio = db.query(models.EntradaSocio).filter(
+                models.EntradaSocio.entrada_id == entrada.id,
+                models.EntradaSocio.socio_id == admin_socio.id
+            ).first()
+            
+            if entrada_socio:
+                percentual = float(entrada_socio.percentual or 0)
+                contribuicao_admin += float(entrada.valor or 0) * (percentual / 100)
+        
+        if faturamento_total > 0:
+            percentual_contrib_admin = (contribuicao_admin / faturamento_total) * 100
+    
+    # Calcular pró-labore e INSS de forma iterativa
+    config = crud_contabilidade.get_configuracao(db)
+    salario_minimo = config.salario_minimo if config else 1518.0
+    pro_labore, inss_patronal, inss_pessoal, lucro_liquido = crud_contabilidade.calcular_pro_labore_iterativo(
+        lucro_bruto, 
+        percentual_contrib_admin,
+        salario_minimo
+    )
     
     return {
         "receita_bruta": float(receita_bruta),
@@ -2088,6 +2172,28 @@ def obter_tempo_medio_por_tipo(db: Session = Depends(get_db)):
 
 # --- Pagamentos Pendentes (Sistema Simplificado) ---
 from database import crud_pagamentos_pendentes
+@api_router.post("/pagamentos-pendentes/gerar")
+def gerar_pagamentos_mes(mes: str = Query(..., regex=r'^\d{4}-\d{2}$'), db: Session = Depends(get_db)):
+    """Gera ou regenera pagamentos pendentes em tempo real baseado nos valores de DRE (consolidado ou provisório)."""
+    try:
+        # Gerar pagamentos (aceita DRE consolidada ou provisória)
+        resultado = crud_pagamentos_pendentes.gerar_pagamentos_mes_dre(db, mes)
+        
+        return {
+            "status": "success",
+            "mes": resultado["mes"],
+            "qtd_removida": resultado["qtd_removida"],
+            "qtd_criada": resultado["qtd_criada"],
+            "total_por_tipo": resultado["total_por_tipo"],
+            "message": f"{resultado['qtd_criada']} pagamento(s) gerado(s) para {mes}"
+        }
+    except HTTPException:
+        raise
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Erro ao gerar pagamentos: {str(e)}")
+
 
 @api_router.get("/pagamentos-pendentes", response_model=List[schemas.PagamentoPendente])
 def listar_pagamentos_pendentes(

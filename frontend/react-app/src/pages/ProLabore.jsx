@@ -231,13 +231,11 @@ function ProLabore() {
           <div style={{ fontSize: '14px', color: '#1976d2', marginBottom: '5px' }}>Pró-labore Líquido</div>
           <div style={{ fontSize: '20px', fontWeight: 'bold', color: '#0d47a1' }}>{formatarMoeda(totais.proLaboreLiquido)}</div>
         </div>
-        {/* Oculta o card de "Lucro (líquido)" para administrador, pois é igual ao pró‑labore líquido */}
-        {socioSelecionado?.funcao !== 'Administrador' && (
-          <div style={{ padding: '15px', backgroundColor: '#e8f5e9', borderRadius: '8px', border: '1px solid #66bb6a' }}>
-            <div style={{ fontSize: '14px', color: '#2e7d32', marginBottom: '5px' }}>Lucro {socioSelecionado?.nome.split(' ')[0]} (líquido)</div>
-            <div style={{ fontSize: '20px', fontWeight: 'bold', color: '#1b5e20' }}>{formatarMoeda(totais.lucroFinal)}</div>
-          </div>
-        )}
+        <div style={{ padding: '15px', backgroundColor: '#e8f5e9', borderRadius: '8px', border: '1px solid #66bb6a' }}>
+          <div style={{ fontSize: '14px', color: '#2e7d32', marginBottom: '5px' }}>Lucro {socioSelecionado?.nome.split(' ')[0]} (líquido)</div>
+          <div style={{ fontSize: '20px', fontWeight: 'bold', color: '#1b5e20' }}>{formatarMoeda(totais.lucroFinal)}</div>
+          <div style={{ fontSize: '11px', color: '#4b5563', marginTop: '5px' }}>Excedente líquido acima de pró‑labore (salário mínimo × 0,89)</div>
+        </div>
       </div>
 
       {loading ? (
@@ -256,9 +254,7 @@ function ProLabore() {
                   <th style={{ padding: '12px 8px', textAlign: 'right', borderBottom: '2px solid #374151' }}>INSS (Pessoa)</th>
                   <th style={{ padding: '12px 8px', textAlign: 'right', borderBottom: '2px solid #374151' }}>INSS (Patronal)</th>
                   <th style={{ padding: '12px 8px', textAlign: 'right', borderBottom: '2px solid #374151' }}>Pró-Labore Líquido</th>
-                  {socioSelecionado?.funcao !== 'Administrador' && (
-                    <th style={{ padding: '12px 8px', textAlign: 'right', borderBottom: '2px solid #374151' }}>Lucro {socioSelecionado?.nome.split(' ')[0]} (líquido)</th>
-                  )}
+                  <th style={{ padding: '12px 8px', textAlign: 'right', borderBottom: '2px solid #374151' }}>Lucro {socioSelecionado?.nome.split(' ')[0]} (líquido)</th>
                 </tr>
               </thead>
               <tbody>
@@ -270,9 +266,7 @@ function ProLabore() {
                     <td style={{ padding: '10px 8px', textAlign: 'right', borderBottom: '1px solid #e5e7eb' }}>{formatarMoeda(mes.inssPessoal)}</td>
                     <td style={{ padding: '10px 8px', textAlign: 'right', borderBottom: '1px solid #e5e7eb' }}>{formatarMoeda(mes.inssPatronal)}</td>
                     <td style={{ padding: '10px 8px', textAlign: 'right', borderBottom: '1px solid #e5e7eb', fontWeight: 'bold', color: '#0d47a1' }}>{formatarMoeda(mes.proLaboreLiquido)}</td>
-                    {socioSelecionado?.funcao !== 'Administrador' && (
-                      <td style={{ padding: '10px 8px', textAlign: 'right', borderBottom: '1px solid #e5e7eb', fontWeight: 'bold', color: '#059669' }}>{formatarMoeda(mes.lucroFinal)}</td>
-                    )}
+                    <td style={{ padding: '10px 8px', textAlign: 'right', borderBottom: '1px solid #e5e7eb', fontWeight: 'bold', color: '#059669' }}>{formatarMoeda(mes.lucroFinal)}</td>
                   </tr>
                 ))}
                 <tr style={{ backgroundColor: '#f3f4f6', fontWeight: 'bold' }}>
@@ -282,9 +276,7 @@ function ProLabore() {
                   <td style={{ padding: '12px 8px', textAlign: 'right', borderTop: '2px solid #9ca3af' }}>{formatarMoeda(totais.inssPessoal)}</td>
                   <td style={{ padding: '12px 8px', textAlign: 'right', borderTop: '2px solid #9ca3af' }}>{formatarMoeda(totais.inssPatronal)}</td>
                   <td style={{ padding: '12px 8px', textAlign: 'right', borderTop: '2px solid #9ca3af', color: '#0d47a1' }}>{formatarMoeda(totais.proLaboreLiquido)}</td>
-                  {socioSelecionado?.funcao !== 'Administrador' && (
-                    <td style={{ padding: '12px 8px', textAlign: 'right', borderTop: '2px solid #9ca3af', color: '#059669' }}>{formatarMoeda(totais.lucroFinal)}</td>
-                  )}
+                  <td style={{ padding: '12px 8px', textAlign: 'right', borderTop: '2px solid #9ca3af', color: '#059669' }}>{formatarMoeda(totais.lucroFinal)}</td>
                 </tr>
               </tbody>
             </table>

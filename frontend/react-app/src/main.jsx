@@ -21,6 +21,7 @@ import DespesaForm from './pages/DespesaForm'
 import SocioPage from './pages/SocioPage'
 import DRE from './pages/DRE'
 import ProLabore from './pages/ProLabore'
+import Lucros from './pages/Lucros'
 import ConfigSimples from './pages/ConfigSimples'
 import Lancamentos from './pages/Lancamentos'
 import PlanoContas from './pages/PlanoContas'
@@ -75,6 +76,7 @@ function App() {
             <Route path="/contabilidade/socios" element={<SocioPage />} />
             <Route path="/contabilidade/dre" element={<DRE />} />
             <Route path="/contabilidade/pro-labore" element={<ProLabore />} />
+            <Route path="/contabilidade/lucros" element={<Lucros />} />
             <Route path="/contabilidade/config-simples" element={<ConfigSimples />} />
             <Route path="/contabilidade" element={<Contabilidade />} />
             

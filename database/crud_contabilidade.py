@@ -181,6 +181,10 @@ def create_entrada(db: Session, entrada: schemas.EntradaCreate) -> models.Entrad
     db.refresh(db_entrada)
     return db_entrada
 
+def get_entrada(db: Session, entrada_id: int) -> models.Entrada:
+    """Busca uma entrada específica pelo ID."""
+    return db.query(models.Entrada).filter(models.Entrada.id == entrada_id).first()
+
 def get_entradas(db: Session, skip: int = 0, limit: int = 100) -> List[models.Entrada]:
     """Busca todas as entradas com os sócios relacionados."""
     return db.query(models.Entrada).options(joinedload(models.Entrada.socios)).offset(skip).limit(limit).all()
@@ -259,13 +263,6 @@ def update_entrada(db: Session, entrada_id: int, entrada: schemas.EntradaCreate)
     
     db.commit()
     db.refresh(db_entrada)
-    
-    # 5. Recalcular provisões e criar novos lançamentos contábeis
-    try:
-        crud_plano_contas.lancar_entrada_honorarios(db, entrada_id)
-    except Exception as e:
-        print(f"⚠️  Erro ao recalcular lançamentos para entrada {entrada_id}: {e}")
-        # Não faz rollback para não perder a atualização da entrada
     
     return db_entrada
 
@@ -763,138 +760,7 @@ def consolidar_dre_mes(db: Session, mes: str, forcar_recalculo: bool = False) ->
     db.commit()
     db.refresh(db_dre)
 
-    # 11. Criar lançamentos contábeis de provisões mensais consolidadas
-    # Remover provisões antigas do mês se estiver for\u00e7ando recálculo
-    if forcar_recalculo:
-        try:
-            from database.crud_plano_contas import buscar_conta_por_codigo
-            db.query(models.LancamentoContabil).filter(
-                models.LancamentoContabil.referencia_mes == mes,
-                models.LancamentoContabil.tipo_lancamento == 'provisao',
-                models.LancamentoContabil.entrada_id == None,
-                models.LancamentoContabil.despesa_id == None
-            ).delete(synchronize_session=False)
-            db.commit()
-        except Exception as e:
-            print(f"[WARN] Falha ao remover provisões antigas do mês {mes}: {e}")
-    
-    # Criar novas provisões mensais consolidadas
-    try:
-        from database.crud_plano_contas import buscar_conta_por_codigo
-        
-        # Buscar contas necessárias
-        conta_simples_despesa = buscar_conta_por_codigo(db, "5.3.1")
-        conta_simples_passivo = buscar_conta_por_codigo(db, "2.1.2.1")
-        conta_inss_despesa = buscar_conta_por_codigo(db, "5.1.3")
-        conta_inss_passivo = buscar_conta_por_codigo(db, "2.1.2.2")
-        conta_lucros_acumulados = buscar_conta_por_codigo(db, "3.3")
-        conta_fundo_reserva = buscar_conta_por_codigo(db, "3.2.2")
-        conta_lucros_distribuidos = buscar_conta_por_codigo(db, "3.4")
-        
-        # Data do último dia do mês para os lançamentos
-        data_lancamento = fim
-        
-        # Provisão Simples Nacional
-        if imposto > 0 and conta_simples_despesa and conta_simples_passivo:
-            lanc_simples = models.LancamentoContabil(
-                data=data_lancamento,
-                conta_debito_id=conta_simples_despesa.id,
-                conta_credito_id=conta_simples_passivo.id,
-                valor=imposto,
-                historico=f"Provisão Simples Nacional mensal - {mes}",
-                automatico=True,
-                editavel=False,
-                tipo_lancamento='provisao',
-                referencia_mes=mes
-            )
-            db.add(lanc_simples)
-        
-        # Provisão INSS Patronal (20% - despesa da empresa)
-        if inss_patronal > 0 and conta_inss_despesa and conta_inss_passivo:
-            lanc_inss = models.LancamentoContabil(
-                data=data_lancamento,
-                conta_debito_id=conta_inss_despesa.id,
-                conta_credito_id=conta_inss_passivo.id,
-                valor=inss_patronal,
-                historico=f"Provisão INSS patronal mensal (20%) - {mes}",
-                automatico=True,
-                editavel=False,
-                tipo_lancamento='provisao',
-                referencia_mes=mes
-            )
-            db.add(lanc_inss)
-        
-        # Provisão Fundo de Reserva (10%)
-        if reserva_10p > 0 and conta_lucros_acumulados and conta_fundo_reserva:
-            lanc_reserva = models.LancamentoContabil(
-                data=data_lancamento,
-                conta_debito_id=conta_lucros_acumulados.id,
-                conta_credito_id=conta_fundo_reserva.id,
-                valor=reserva_10p,
-                historico=f"Provisão fundo de reserva mensal (10%) - {mes}",
-                automatico=True,
-                editavel=False,
-                tipo_lancamento='provisao',
-                referencia_mes=mes
-            )
-            db.add(lanc_reserva)
-        
-        # Provisão Pró-labore e Lucros Distribuídos
-        # Pró-labore é considerado "lucro disfarçado" e vai para Lucros Distribuídos (3.4)
-        # Lucro disponível = lucro líquido - reserva 10%
-        lucro_disponivel_total = lucro_liquido - reserva_10p
-        
-        # Distribuir entre sócios conforme percentuais de participação no mês
-        socios = db.query(models.Socio).all()
-        
-        for socio in socios:
-            # Calcular percentual de participação do sócio no mês
-            contribuicao_socio = 0.0
-            faturamento_total_mes = 0.0
-            
-            entradas_mes = db.query(models.Entrada).filter(
-                models.Entrada.data >= inicio,
-                models.Entrada.data <= fim
-            ).all()
-            
-            for entrada in entradas_mes:
-                faturamento_total_mes += float(entrada.valor or 0)
-                entrada_socio = db.query(models.EntradaSocio).filter(
-                    models.EntradaSocio.entrada_id == entrada.id,
-                    models.EntradaSocio.socio_id == socio.id
-                ).first()
-                
-                if entrada_socio:
-                    percentual = float(entrada_socio.percentual or 0)
-                    contribuicao_socio += float(entrada.valor or 0) * (percentual / 100)
-            
-            if faturamento_total_mes > 0:
-                percentual_socio = (contribuicao_socio / faturamento_total_mes) * 100
-                lucro_socio = lucro_disponivel_total * (percentual_socio / 100)
-                
-                # Se for o administrador, incluir o pró-labore como lucro
-                if socio.funcao and 'administrador' in socio.funcao.lower():
-                    lucro_socio += pro_labore
-                
-                if lucro_socio > 0 and conta_lucros_acumulados and conta_lucros_distribuidos:
-                    lanc_lucro = models.LancamentoContabil(
-                        data=data_lancamento,
-                        conta_debito_id=conta_lucros_acumulados.id,
-                        conta_credito_id=conta_lucros_distribuidos.id,
-                        valor=lucro_socio,
-                        historico=f"Provisão lucro mensal - {socio.nome} ({percentual_socio:.2f}%) - {mes}",
-                        automatico=True,
-                        editavel=False,
-                        tipo_lancamento='provisao',
-                        referencia_mes=mes
-                    )
-                    db.add(lanc_lucro)
-        
-        db.commit()
-        
-    except Exception as e:
-        print(f"[WARN] Falha ao criar lançamentos de provisão mensal para {mes}: {e}")
-        # Não fazer rollback para não perder a DRE consolidada
+    # Lançamentos de provisão removidos - não mais automáticos
 
     # Registrar fechamento do resultado no razão para refletir no PL (3.3)
     try:
@@ -920,16 +786,6 @@ def desconsolidar_dre_mes(db: Session, mes: str) -> Optional[models.DREMensal]:
     if dre:
         dre.consolidado = False
         dre.data_consolidacao = None
-        # Remover todas as provisões mensais consolidadas (sem entrada_id/despesa_id)
-        try:
-            db.query(models.LancamentoContabil).filter(
-                models.LancamentoContabil.referencia_mes == mes,
-                models.LancamentoContabil.tipo_lancamento == 'provisao',
-                models.LancamentoContabil.entrada_id == None,
-                models.LancamentoContabil.despesa_id == None
-            ).delete(synchronize_session=False)
-        except Exception as e:
-            print(f"[WARN] Falha ao remover provisões mensais ao desconsolidar {mes}: {e}")
         db.commit()
         db.refresh(dre)
     return dre
@@ -943,3 +799,53 @@ def get_dre_ano(db: Session, ano: int) -> List[models.DREMensal]:
     from utils.datas import meses_do_ano
     meses = meses_do_ano(ano)
     return db.query(models.DREMensal).filter(models.DREMensal.mes.in_(meses)).order_by(models.DREMensal.mes).all()
+
+def calcular_percentual_participacao_socio(db: Session, socio_id: int, mes: str) -> float:
+    """
+    Calcula o percentual de participação de um sócio nas entradas de um mês específico.
+    
+    Args:
+        db: Sessão do banco de dados
+        socio_id: ID do sócio
+        mes: String no formato 'YYYY-MM'
+    
+    Returns:
+        Percentual de participação (0.0 a 100.0)
+    """
+    from utils.datas import inicio_do_mes, fim_do_mes
+    
+    inicio = inicio_do_mes(mes)
+    fim = fim_do_mes(mes)
+    
+    # Buscar todas as entradas do mês
+    entradas = db.query(models.Entrada).filter(
+        models.Entrada.data >= inicio,
+        models.Entrada.data <= fim
+    ).all()
+    
+    if not entradas:
+        return 0.0
+    
+    # Calcular total de entradas e contribuição do sócio
+    entrada_total = 0.0
+    socio_total = 0.0
+    
+    for entrada in entradas:
+        valor_entrada = float(entrada.valor or 0)
+        entrada_total += valor_entrada
+        
+        # Buscar participação do sócio nesta entrada
+        entrada_socio = db.query(models.EntradaSocio).filter(
+            models.EntradaSocio.entrada_id == entrada.id,
+            models.EntradaSocio.socio_id == socio_id
+        ).first()
+        
+        if entrada_socio:
+            percentual = float(entrada_socio.percentual or 0)
+            socio_total += valor_entrada * (percentual / 100.0)
+    
+    # Calcular percentual de participação
+    if entrada_total > 0:
+        return (socio_total / entrada_total) * 100.0
+    else:
+        return 0.0

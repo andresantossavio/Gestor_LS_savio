@@ -17,7 +17,8 @@ const menuItems = [
             { name: 'DMPL', to: '/contabilidade/dmpl', icon: '📉' },
             { name: 'DFC', to: '/contabilidade/dfc', icon: '💵' },
             { name: 'DRE', to: '/contabilidade/dre', icon: '📋' },
-            { name: 'Pró-Labore', to: '/contabilidade/pro-labore', icon: '💰' }
+            { name: 'Pró-Labore', to: '/contabilidade/pro-labore', icon: '💰' },
+            { name: 'Lucros', to: '/contabilidade/lucros', icon: '💵' }
         ]
     },
     { name: 'Tarefas', to: '/tarefas', icon: '✅' },

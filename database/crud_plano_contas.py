@@ -27,6 +27,51 @@ def buscar_conta_por_id(db: Session, conta_id: int) -> Optional[models.PlanoDeCo
     return db.query(models.PlanoDeContas).filter(models.PlanoDeContas.id == conta_id).first()
 
 
+def _get_or_create_conta(
+    db: Session,
+    codigo: str,
+    descricao: str,
+    tipo: str,
+    natureza: str,
+    nivel: int,
+    pai_codigo: Optional[str] = None,
+    aceita_lancamento: bool = True,
+) -> models.PlanoDeContas:
+    """Obtém uma conta por código ou cria caso não exista.
+
+    Observação: mantém o padrão já usado no init, com natureza
+    como rótulo completo ("Devedora"/"Credora").
+    """
+    conta = buscar_conta_por_codigo(db, codigo)
+    if conta:
+        return conta
+
+    conta = models.PlanoDeContas(
+        codigo=codigo,
+        descricao=descricao,
+        tipo=tipo,
+        natureza=natureza,
+        nivel=nivel,
+        aceita_lancamento=aceita_lancamento,
+        ativo=True,
+    )
+    # Definir pai, se informado e existir
+    if pai_codigo:
+        pai = buscar_conta_por_codigo(db, pai_codigo)
+        if pai:
+            conta.pai_id = pai.id
+    db.add(conta)
+    db.commit()
+    db.refresh(conta)
+    return conta
+
+
+def _ultimo_dia_mes(ano: int, mes: int) -> date_type:
+    import calendar
+    dia = calendar.monthrange(ano, mes)[1]
+    return date_type(ano, mes, dia)
+
+
 def calcular_saldo_conta(db: Session, conta_id: int, data_inicio: Optional[date_type] = None, data_fim: Optional[date_type] = None) -> float:
     """
     Calcula o saldo de uma conta considerando sua natureza (Devedora ou Credora)
@@ -63,10 +108,12 @@ def calcular_saldo_conta(db: Session, conta_id: int, data_inicio: Optional[date_
     
     total_creditos = sum(lanc.valor for lanc in query_creditos.all())
     
-    # Calcular saldo conforme natureza (D = Devedora, C = Credora)
-    if conta.natureza == "D":
+    # Calcular saldo conforme natureza (Devedora ou Credora)
+    # Normalizar para aceitar "D"/"Devedora" e "C"/"Credora"
+    natureza_normalizada = conta.natureza.upper() if conta.natureza else ""
+    if natureza_normalizada in ("D", "DEVEDORA"):
         return total_debitos - total_creditos
-    else:  # C = Credora
+    else:  # Credora
         return total_creditos - total_debitos
 
 
@@ -413,6 +460,86 @@ def listar_lancamentos(
 
 # ===== LANÇAMENTOS AUTOMÁTICOS =====
 
+def registrar_fechamento_resultado(
+    db: Session,
+    mes: str,
+    valor_resultado: float,
+    recriar: bool = False,
+) -> Optional[models.LancamentoContabil]:
+    """Registra lançamento de fechamento do resultado para o mês (YYYY-MM).
+
+    Regras:
+    - Se valor > 0: D 4.9.9 (técnica) / C 3.3 (Lucros Acumulados)
+    - Se valor < 0: D 3.3 / C 4.9.9
+    - Se valor ~ 0: não lança
+    - Idempotente por mês: ao recriar, remove existentes do tipo 'fechamento_resultado'.
+    """
+    if not mes or len(mes) != 7 or mes[4] != '-':
+        raise ValueError("Parâmetro 'mes' deve estar no formato YYYY-MM")
+
+    # Tolerância para valores muito pequenos
+    if abs(valor_resultado) < 0.005:
+        return None
+
+    ano_int = int(mes.split('-')[0])
+    mes_int = int(mes.split('-')[1])
+    data_lcto = _ultimo_dia_mes(ano_int, mes_int)
+
+    # Garantir contas necessárias
+    conta_lucros = buscar_conta_por_codigo(db, "3.3")
+    if not conta_lucros:
+        raise ValueError("Conta 3.3 (Lucros Acumulados) não encontrada")
+
+    # Conta técnica de resultado no grupo de Receitas
+    conta_tecnica = _get_or_create_conta(
+        db,
+        codigo="4.9.9",
+        descricao="Fechamento do Resultado (técnica)",
+        tipo="Receita",
+        natureza="Credora",
+        nivel=3,
+        pai_codigo="4",
+        aceita_lancamento=True,
+    )
+
+    # Remover SEMPRE qualquer fechamento existente para este mês (idempotência)
+    # Isso garante que não haverá duplicatas mesmo se a função for chamada múltiplas vezes
+    deletados = db.query(models.LancamentoContabil).filter(
+        models.LancamentoContabil.referencia_mes == mes,
+        models.LancamentoContabil.tipo_lancamento == 'fechamento_resultado'
+    ).delete(synchronize_session=False)
+    
+    if deletados > 0:
+        db.commit()
+        print(f"[INFO] Removidos {deletados} lançamentos de fechamento duplicados para {mes}")
+
+    historico = f"Fechamento do resultado do mês {mes}"
+
+    if valor_resultado > 0:
+        conta_debito_id = conta_tecnica.id
+        conta_credito_id = conta_lucros.id
+        valor = valor_resultado
+    else:
+        conta_debito_id = conta_lucros.id
+        conta_credito_id = conta_tecnica.id
+        valor = abs(valor_resultado)
+
+    lanc = models.LancamentoContabil(
+        data=data_lcto,
+        conta_debito_id=conta_debito_id,
+        conta_credito_id=conta_credito_id,
+        valor=valor,
+        historico=historico,
+        automatico=True,
+        editavel=False,
+        tipo_lancamento='fechamento_resultado',
+        referencia_mes=mes,
+    )
+    db.add(lanc)
+    db.commit()
+    db.refresh(lanc)
+    return lanc
+
 def lancar_entrada_honorarios(db: Session, entrada_id: int) -> List[models.LancamentoContabil]:
     """
     Cria lançamentos automáticos para entrada de honorários com sistema de provisões.
@@ -735,7 +862,7 @@ def gerar_balanco_patrimonial(db: Session, mes: int, ano: int):
     passivo = construir_hierarquia("2")
     patrimonio_liquido = construir_hierarquia("3")
     
-    # Calcular resultado do período (Receitas - Despesas) e adicionar aos Lucros Acumulados
+    # Calcular resultado do período (Receitas - Despesas)
     receitas = construir_hierarquia("4")
     despesas = construir_hierarquia("5")
     
@@ -750,8 +877,15 @@ def gerar_balanco_patrimonial(db: Session, mes: int, ano: int):
         return total
     
     resultado_periodo = calcular_saldo_grupo(receitas) - calcular_saldo_grupo(despesas)
-    
-    # Adicionar resultado aos Lucros Acumulados (conta 3.3)
+
+    # Somente adicionar o resultado aos Lucros Acumulados (3.3)
+    # se NÃO houver lançamento de fechamento do resultado para o mês.
+    # Assim evitamos dupla contagem quando já creditamos 3.3 via razão.
+    existe_fechamento = db.query(models.LancamentoContabil).filter(
+        models.LancamentoContabil.tipo_lancamento == 'fechamento_resultado',
+        models.LancamentoContabil.referencia_mes == f"{ano}-{str(mes).zfill(2)}"
+    ).first() is not None
+
     def adicionar_resultado_lucros(grupos, resultado):
         """Adiciona o resultado do período na conta de Lucros Acumulados"""
         for grupo in grupos:
@@ -762,8 +896,9 @@ def gerar_balanco_patrimonial(db: Session, mes: int, ano: int):
                 if adicionar_resultado_lucros(grupo["subgrupos"], resultado):
                     return True
         return False
-    
-    adicionar_resultado_lucros(patrimonio_liquido, resultado_periodo)
+
+    if not existe_fechamento:
+        adicionar_resultado_lucros(patrimonio_liquido, resultado_periodo)
     
     # Atualizar saldos das contas sintéticas
     atualizar_saldos_sinteticos(ativo)
@@ -772,19 +907,12 @@ def gerar_balanco_patrimonial(db: Session, mes: int, ano: int):
     
     # Calcular totais recursivamente
     def calcular_total_recursivo(grupos):
-        """Calcula total somando apenas contas analíticas (que aceitam lançamento)"""
+        """Calcula total somando saldos já calculados (sintéticas já agregadas)"""
         total = 0.0
         for grupo in grupos:
-            # Se aceita lançamento, é conta analítica - soma o saldo
-            if grupo["aceita_lancamento"]:
-                # Contas de natureza devedora reduzem o total (ex: Lucros Distribuídos)
-                if grupo["natureza"] == "D":
-                    total -= grupo["saldo"]
-                else:
-                    total += grupo["saldo"]
-            # Se tem subgrupos, processa recursivamente (sejam analíticas ou sintéticas)
-            if grupo["subgrupos"]:
-                total += calcular_total_recursivo(grupo["subgrupos"])
+            # Apenas somar os saldos do primeiro nível (grupos raiz), pois sintéticas já agregaram seus filhos
+            # Contas de natureza devedora dentro do PL (ex: 3.4 Lucros Distribuídos) já tem saldo negativo no cálculo
+            total += grupo["saldo"]
         return total
     
     total_ativo = calcular_total_recursivo(ativo)

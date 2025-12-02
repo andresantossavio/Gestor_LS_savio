@@ -149,6 +149,20 @@ def deletar_socio(socio_id: int, db: Session = Depends(get_db)):
         raise HTTPException(status_code=404, detail="Sócio não encontrado")
     return {"status": "ok"}
 
+# --- Aportes de Capital ---
+@api_router.post("/contabilidade/socios/{socio_id}/aportes")
+def registrar_aporte(socio_id: int, aporte: schemas.AporteCapitalCreate, db: Session = Depends(get_db)):
+    try:
+        return crud_contabilidade.registrar_aporte_capital(
+            db=db,
+            socio_id=socio_id,
+            valor=aporte.valor,
+            data=aporte.data,
+            forma=aporte.forma
+        )
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
 # --- Entradas ---
 @api_router.get("/contabilidade/entradas", response_model=List[schemas.Entrada])
 def listar_entradas(skip: int = 0, limit: int = 100, db: Session = Depends(get_db)):
@@ -238,6 +252,7 @@ def listar_dre_ano(year: int, calcular_tempo_real: bool = False, db: Session = D
                 "pro_labore": dre.pro_labore,
                 "inss_patronal": dre.inss_patronal,
                 "inss_pessoal": dre.inss_pessoal,
+                "inss_total": (dre.inss_patronal + dre.inss_pessoal),
                 "despesas_gerais": dre.despesas_gerais,
                 "lucro_liquido": dre.lucro_liquido,
                 "reserva_10p": dre.reserva_10p,
@@ -340,6 +355,7 @@ def listar_dre_ano(year: int, calcular_tempo_real: bool = False, db: Session = D
                 "pro_labore": pro_labore,
                 "inss_patronal": inss_patronal,
                 "inss_pessoal": inss_pessoal,
+                "inss_total": (inss_patronal + inss_pessoal),
                 "despesas_gerais": despesas_gerais,
                 "lucro_liquido": lucro_liquido,
                 "reserva_10p": reserva_10p,
@@ -358,6 +374,7 @@ def listar_dre_ano(year: int, calcular_tempo_real: bool = False, db: Session = D
                 "pro_labore": 0.0,
                 "inss_patronal": 0.0,
                 "inss_pessoal": 0.0,
+                "inss_total": 0.0,
                 "despesas_gerais": 0.0,
                 "lucro_liquido": 0.0,
                 "reserva_10p": 0.0,
@@ -365,6 +382,125 @@ def listar_dre_ano(year: int, calcular_tempo_real: bool = False, db: Session = D
             })
     
     return resultado
+
+
+# --- Pró‑Labore (por sócio administrador) ---
+@api_router.get("/contabilidade/pro-labore/{socio_id}")
+def obter_pro_labore_socio(
+    socio_id: int,
+    year: int = Query(..., ge=2000),
+    db: Session = Depends(get_db)
+):
+    """Retorna, mês a mês, o pró‑labore do administrador alinhado à DRE consolidada.
+
+    Estrutura de resposta compatível com a página `ProLabore.jsx`:
+    {
+      meses: [
+        {
+          ano, mes, faturamento_total, contribuicao_socio, percentual_contribuicao,
+          pro_labore_bruto, inss_pessoal, inss_patronal, pro_labore_liquido,
+          lucro_liquido, lucro_final_socio
+        }, ...
+      ]
+    }
+    """
+    from utils.datas import meses_do_ano, inicio_do_mes, fim_do_mes, ultimos_12_meses
+    from utils.simples import calcular_faixa_simples, calcular_imposto_simples
+
+    socio = crud_contabilidade.get_socio(db, socio_id)
+    if not socio:
+        raise HTTPException(status_code=404, detail="Sócio não encontrado")
+    if not (socio.funcao and 'administrador' in socio.funcao.lower()):
+        # Esta API está focada no administrador (pró‑labore)
+        raise HTTPException(status_code=400, detail="Endpoint disponível apenas para sócio administrador")
+
+    meses = meses_do_ano(year)
+    saida = []
+
+    for mes_str in meses:
+        # Consolidado primeiro
+        dre = crud_contabilidade.get_dre_mensal(db, mes_str)
+
+        inicio = inicio_do_mes(mes_str)
+        fim = fim_do_mes(mes_str)
+
+        # Faturamento total do mês e contribuição do sócio nas entradas
+        entradas_mes = db.query(models.Entrada).filter(
+            models.Entrada.data >= inicio,
+            models.Entrada.data <= fim
+        ).all()
+
+        faturamento_total = sum(float(e.valor or 0) for e in entradas_mes)
+        contribuicao_socio = 0.0
+        for e in entradas_mes:
+            es = db.query(models.EntradaSocio).filter(
+                models.EntradaSocio.entrada_id == e.id,
+                models.EntradaSocio.socio_id == socio_id
+            ).first()
+            if es:
+                contribuicao_socio += float(e.valor or 0) * (float(es.percentual or 0) / 100.0)
+
+        percentual_contrib = (contribuicao_socio / faturamento_total * 100.0) if faturamento_total > 0 else 0.0
+
+        if dre and dre.consolidado:
+            pro_labore_bruto = float(dre.pro_labore or 0)
+            inss_patronal = float(dre.inss_patronal or 0)
+            inss_pessoal = float(dre.inss_pessoal or 0)
+            lucro_liquido = float(dre.lucro_liquido or 0)
+        else:
+            # Cálculo em tempo real replicando o de DRE
+            # Receita do mês
+            receita_bruta = db.query(func.sum(models.Entrada.valor)).filter(
+                models.Entrada.data >= inicio,
+                models.Entrada.data <= fim
+            ).scalar() or 0.0
+
+            # Receita acumulada 12 meses
+            receita_12m = 0.0
+            for m12 in ultimos_12_meses(mes_str):
+                i12 = inicio_do_mes(m12)
+                f12 = fim_do_mes(m12)
+                receita_12m += db.query(func.sum(models.Entrada.valor)).filter(
+                    models.Entrada.data >= i12,
+                    models.Entrada.data <= f12
+                ).scalar() or 0.0
+
+            try:
+                _, _, aliquota_efetiva = calcular_faixa_simples(receita_12m, inicio, db)
+            except Exception:
+                aliquota_efetiva = 0.0
+
+            imposto = calcular_imposto_simples(receita_bruta, aliquota_efetiva)
+            despesas_gerais = db.query(func.sum(models.Despesa.valor)).filter(
+                models.Despesa.data >= inicio,
+                models.Despesa.data <= fim
+            ).scalar() or 0.0
+            lucro_bruto = receita_bruta - imposto - despesas_gerais
+
+            config = crud_contabilidade.get_configuracao(db)
+            salario_minimo = config.salario_minimo if config else 1518.0
+            pro_labore_bruto, inss_patronal, inss_pessoal, lucro_liquido = crud_contabilidade.calcular_pro_labore_iterativo(
+                lucro_bruto, percentual_contrib, salario_minimo
+            )
+
+        pro_labore_liquido = pro_labore_bruto * 0.89
+        lucro_final_socio = pro_labore_liquido  # para admin
+
+        saida.append({
+            "ano": int(mes_str.split('-')[0]),
+            "mes": int(mes_str.split('-')[1]),
+            "faturamento_total": round(faturamento_total, 2),
+            "contribuicao_socio": round(contribuicao_socio, 2),
+            "percentual_contribuicao": round(percentual_contrib, 2),
+            "pro_labore_bruto": round(pro_labore_bruto, 2),
+            "inss_pessoal": round(inss_pessoal, 2),
+            "inss_patronal": round(inss_patronal, 2),
+            "pro_labore_liquido": round(pro_labore_liquido, 2),
+            "lucro_liquido": round(lucro_liquido, 2),
+            "lucro_final_socio": round(lucro_final_socio, 2),
+        })
+
+    return {"socio_id": socio_id, "ano": year, "meses": saida}
 
 @api_router.post("/contabilidade/dre/consolidar")
 def consolidar_dre(mes: str, forcar: bool = False, db: Session = Depends(get_db)):
@@ -382,6 +518,7 @@ def consolidar_dre(mes: str, forcar: bool = False, db: Session = Depends(get_db)
             "pro_labore": dre.pro_labore,
             "inss_patronal": dre.inss_patronal,
             "inss_pessoal": dre.inss_pessoal,
+            "inss_total": (dre.inss_patronal + dre.inss_pessoal),
             "despesas_gerais": dre.despesas_gerais,
             "lucro_liquido": dre.lucro_liquido,
             "reserva_10p": dre.reserva_10p,
@@ -440,8 +577,11 @@ def obter_dashboard_summary(db: Session = Depends(get_db)):
     
     saldo_socios = 0.0
     for socio in socios:
-        # Cada sócio tem direito ao seu percentual do lucro distribuível
-        saldo_socios += lucro_distribuivel * socio.percentual
+        perc = socio.percentual or 0.0
+        # Aceita percentuais em decimal (0-1) ou inteiro (0-100)
+        if perc > 1:
+            perc = perc / 100.0
+        saldo_socios += lucro_distribuivel * perc
     
     # Balanço Patrimonial
     ativo = saldo_socios + fundo_reserva.saldo + fundo_investimento.saldo
@@ -469,7 +609,10 @@ def obter_dashboard_summary(db: Session = Depends(get_db)):
     for socio in socios:
         usuario = db.query(models.Usuario).filter(models.Usuario.id == socio.usuario_id).first()
         nome_socio = usuario.nome if usuario else f"Sócio {socio.id}"
-        valor_socio = lucro_distribuivel * socio.percentual
+        perc = socio.percentual or 0.0
+        if perc > 1:
+            perc = perc / 100.0
+        valor_socio = lucro_distribuivel * perc
         distribuicao_socios.append({
             "name": nome_socio,
             "value": valor_socio
@@ -1145,48 +1288,12 @@ def _calcular_dre_mes(db: Session, year: int, month: int):
         models.Despesa.data <= fim
     ).scalar() or 0.0
     
-    # Calcular lucro bruto (antes de pró-labore e INSS)
-    lucro_bruto = receita_bruta - imposto - despesas_gerais
-    
-    # Encontrar sócio administrador e seu percentual de contribuição
-    admin_socio = db.query(models.Socio).filter(
-        models.Socio.funcao.ilike('%administrador%')
-    ).first()
-    
-    percentual_contrib_admin = 100.0  # Default se não tiver sócio admin
-    
-    if admin_socio:
-        # Calcular contribuição do admin no mês
-        entradas_mes = db.query(models.Entrada).filter(
-            models.Entrada.data >= inicio,
-            models.Entrada.data <= fim
-        ).all()
-        
-        contribuicao_admin = 0.0
-        faturamento_total = 0.0
-        
-        for entrada in entradas_mes:
-            faturamento_total += float(entrada.valor or 0)
-            entrada_socio = db.query(models.EntradaSocio).filter(
-                models.EntradaSocio.entrada_id == entrada.id,
-                models.EntradaSocio.socio_id == admin_socio.id
-            ).first()
-            
-            if entrada_socio:
-                percentual = float(entrada_socio.percentual or 0)
-                contribuicao_admin += float(entrada.valor or 0) * (percentual / 100)
-        
-        if faturamento_total > 0:
-            percentual_contrib_admin = (contribuicao_admin / faturamento_total) * 100
-    
-    # Calcular pró-labore e INSS de forma iterativa
-    config = crud_contabilidade.get_configuracao(db)
-    salario_minimo = config.salario_minimo if config else 1518.0
-    pro_labore, inss_patronal, inss_pessoal, lucro_liquido = crud_contabilidade.calcular_pro_labore_iterativo(
-        lucro_bruto, 
-        percentual_contrib_admin,
-        salario_minimo
-    )
+    # Cálculo revertido para manter consistência com DRE consolidada
+    # Pró-labore e INSS não entram no cálculo (zerados)
+    pro_labore = 0.0
+    inss_patronal = 0.0
+    inss_pessoal = 0.0
+    lucro_liquido = receita_bruta - imposto - despesas_gerais
     
     return {
         "receita_bruta": float(receita_bruta),

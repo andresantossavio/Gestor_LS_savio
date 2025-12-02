@@ -3,6 +3,7 @@ from pydantic import BaseModel, field_validator
 from datetime import date, datetime
 from typing import Optional, List
 from enum import Enum
+from typing import Literal
 
 class ClienteBase(BaseModel):
     nome: Optional[str] = None
@@ -173,6 +174,13 @@ class Socio(SocioBase):
     usuario: Optional[Usuario] = None
     class Config:
         from_attributes = True
+
+
+# Aportes de Capital
+class AporteCapitalCreate(BaseModel):
+    valor: float
+    data: date
+    forma: Literal['dinheiro', 'bens']
 
 
 # --- Schemas para Criação ---

@@ -16,6 +16,9 @@ const SocioPage = () => {
         capital_social: '',
         percentual: ''
     });
+    const hojeISO = new Date().toISOString().slice(0, 10);
+    const [aporteInicial, setAporteInicial] = useState({ valor: '', data: hojeISO, forma: 'dinheiro' });
+    const [aporteEdicao, setAporteEdicao] = useState({ valor: '', data: hojeISO, forma: 'dinheiro' });
 
     const fetchSocios = async () => {
         setIsLoading(true);
@@ -87,16 +90,42 @@ const SocioPage = () => {
                 body: JSON.stringify({
                     ...newSocio,
                     usuario_id: newSocio.usuario_id || null,
-                    capital_social: parseFloat(newSocio.capital_social) || null,
+                    // No create: capital_social será 0; aporte lançado em seguida
+                    capital_social: editingId ? (parseFloat(newSocio.capital_social) || null) : 0,
                     percentual: percentualDecimal || null,
                 }),
             });
             if (!response.ok) {
-                const errData = await response.json();
-                throw new Error(errData.detail || `Falha ao ${editingId ? 'atualizar' : 'criar'} sócio`);
+                let message = `Falha ao ${editingId ? 'atualizar' : 'criar'} sócio`;
+                try { const errData = await response.json(); message = errData.detail || message; } catch { message = await response.text(); }
+                throw new Error(message);
             }
-            // Reset form and reload list
+            const socioCriadoOuEditado = await response.json();
+
+            // Se criação com aporte inicial informado, registrar aporte e atualizar capital
+            if (!editingId) {
+                const valorAporte = parseFloat(aporteInicial.valor);
+                if (valorAporte && aporteInicial.data) {
+                    const respAporte = await fetch(`${apiBase}/socios/${socioCriadoOuEditado.id}/aportes`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            valor: valorAporte,
+                            data: aporteInicial.data,
+                            forma: aporteInicial.forma || 'dinheiro'
+                        })
+                    });
+                    if (!respAporte.ok) {
+                        let message2 = 'Falha ao registrar aporte inicial';
+                        try { const errData2 = await respAporte.json(); message2 = errData2.detail || message2; } catch { message2 = await respAporte.text(); }
+                        throw new Error(message2);
+                    }
+                }
+            }
+
+            // Reset form e recarregar lista
             setNewSocio({ nome: '', usuario_id: null, funcao: '', capital_social: '', percentual: '' });
+            setAporteInicial({ valor: '', data: '', forma: 'dinheiro' });
             setEditingId(null);
             fetchSocios();
         } catch (err) {
@@ -114,6 +143,35 @@ const SocioPage = () => {
         });
         setEditingId(socio.id);
         window.scrollTo({ top: 0, behavior: 'smooth' });
+    };
+
+    const handleRegistrarAporte = async () => {
+        if (!editingId) return;
+        try {
+            const valor = parseFloat(aporteEdicao.valor);
+            if (!valor || !aporteEdicao.data) {
+                setError('Informe valor e data do aporte.');
+                return;
+            }
+            const resp = await fetch(`${apiBase}/socios/${editingId}/aportes`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    valor,
+                    data: aporteEdicao.data,
+                    forma: aporteEdicao.forma || 'dinheiro',
+                })
+            });
+            if (!resp.ok) {
+                let message = 'Falha ao registrar aporte';
+                try { const errData = await resp.json(); message = errData.detail || message; } catch { message = await resp.text(); }
+                throw new Error(message);
+            }
+            setAporteEdicao({ valor: '', data: '', forma: 'dinheiro' });
+            fetchSocios();
+        } catch (err) {
+            setError(err.message);
+        }
     };
 
     const handleDelete = async (id) => {
@@ -140,6 +198,8 @@ const SocioPage = () => {
     return (
         <div style={{ padding: 20 }}>
             <Header title="Gerenciar Sócios" />
+            {/* Resumo do capital social total */}
+            <CapitalResumo socios={socios} />
             
             <div style={formContainerStyle}>
                 <h3>{editingId ? 'Editar Sócio' : 'Adicionar Novo Sócio'}</h3>
@@ -194,7 +254,36 @@ const SocioPage = () => {
                         </small>
                     </div>
                     
-                    <input name="capital_social" type="number" value={newSocio.capital_social} onChange={handleInputChange} placeholder="Capital Social (R$)" style={inputStyle}/>
+                    {/* Para criação: valor do capital inicial entra como Aporte (valor + data + forma). */}
+                    {!editingId ? (
+                        <>
+                            <input
+                                name="capital_inicial"
+                                type="number"
+                                value={aporteInicial.valor}
+                                onChange={(e) => setAporteInicial(prev => ({ ...prev, valor: e.target.value }))}
+                                placeholder="Capital Inicial (R$)"
+                                style={inputStyle}
+                            />
+                            <div style={{ display: 'flex', gap: '10px', marginBottom: '10px' }}>
+                                <input type="date" value={aporteInicial.data} onChange={(e) => setAporteInicial(prev => ({ ...prev, data: e.target.value || hojeISO }))} placeholder="Data do aporte" style={inputStyle} />
+                                <select value={aporteInicial.forma} onChange={(e) => setAporteInicial(prev => ({ ...prev, forma: e.target.value }))} style={inputStyle}>
+                                    <option value="dinheiro">Dinheiro</option>
+                                    <option value="bens">Bens</option>
+                                </select>
+                            </div>
+                        </>
+                    ) : (
+                        <input
+                            name="capital_social"
+                            type="number"
+                            value={newSocio.capital_social}
+                            onChange={handleInputChange}
+                            placeholder="Capital Social Atual (R$)"
+                            style={inputStyle}
+                            readOnly
+                        />
+                    )}
                     <input name="percentual" type="number" step="0.01" value={newSocio.percentual} onChange={handleInputChange} placeholder="Percentual na Sociedade (ex: 50 para 50%)" style={inputStyle}/>
                     <div style={{ display: 'flex', gap: '10px' }}>
                         <button type="submit" style={buttonStyle}>{editingId ? 'Atualizar Sócio' : 'Adicionar Sócio'}</button>
@@ -203,6 +292,20 @@ const SocioPage = () => {
                         )}
                     </div>
                 </form>
+                {editingId && (
+                    <div style={{ marginTop: '16px', paddingTop: '12px', borderTop: '1px solid #ddd' }}>
+                        <h4 style={{ marginBottom: '8px' }}>Adicionar Aporte de Capital</h4>
+                        <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
+                            <input type="number" placeholder="Valor do aporte (R$)" value={aporteEdicao.valor} onChange={(e) => setAporteEdicao(prev => ({ ...prev, valor: e.target.value }))} style={inputStyle} />
+                            <input type="date" value={aporteEdicao.data} onChange={(e) => setAporteEdicao(prev => ({ ...prev, data: e.target.value || hojeISO }))} style={inputStyle} />
+                            <select value={aporteEdicao.forma} onChange={(e) => setAporteEdicao(prev => ({ ...prev, forma: e.target.value }))} style={inputStyle}>
+                                <option value="dinheiro">Dinheiro</option>
+                                <option value="bens">Bens</option>
+                            </select>
+                        </div>
+                        <button type="button" onClick={handleRegistrarAporte} style={{ ...buttonStyle, marginTop: '8px' }}>Adicionar Aporte</button>
+                    </div>
+                )}
             </div>
 
             {error && <p style={{ color: 'red' }}><strong>Erro:</strong> {error}</p>}
@@ -213,7 +316,14 @@ const SocioPage = () => {
             ) : (
                 <ul style={listStyle}>
                     {socios.length === 0 && <p>Nenhum sócio cadastrado.</p>}
-                    {socios.map(socio => (
+                    {(() => {
+                        const totalCapital = (socios || []).reduce((acc, s) => acc + (s.capital_social || 0), 0);
+                        const calcPerc = (s) => {
+                            if (!totalCapital) return 0;
+                            const cap = s.capital_social || 0;
+                            return (cap / totalCapital) * 100;
+                        };
+                        return socios.map(socio => (
                         <li key={socio.id} style={listItemStyle}>
                             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                                 <div>
@@ -225,7 +335,7 @@ const SocioPage = () => {
                                     )}
                                     <br />
                                     <span style={{ color: '#666' }}>
-                                        {socio.funcao || 'N/A'} - Capital: R$ {socio.capital_social?.toFixed(2) || '0.00'} - Percentual: {socio.percentual ? (socio.percentual * 100).toFixed(2) : '0'}%
+                                        {socio.funcao || 'N/A'} - Capital: R$ {socio.capital_social?.toFixed(2) || '0.00'} - Percentual: {calcPerc(socio).toFixed(2)}%
                                     </span>
                                 </div>
                                 <div style={{ display: 'flex', gap: '10px' }}>
@@ -234,7 +344,8 @@ const SocioPage = () => {
                                 </div>
                             </div>
                         </li>
-                    ))}
+                        ));
+                    })()}
                 </ul>
             )}
         </div>
@@ -309,3 +420,13 @@ const listItemStyle = {
 };
 
 export default SocioPage;
+
+// Componente auxiliar para exibir o total de capital social
+const CapitalResumo = ({ socios }) => {
+    const total = (socios || []).reduce((acc, s) => acc + (s.capital_social || 0), 0);
+    return (
+        <div style={{ margin: '12px 0 20px', padding: '12px', background: '#fff', border: '1px solid #e5e5e5', borderRadius: 6 }}>
+            <strong>Capital Social Total:</strong> R$ {total.toFixed(2)}
+        </div>
+    );
+};

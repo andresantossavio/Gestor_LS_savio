@@ -64,12 +64,12 @@ const EntradaForm = () => {
     };
 
     const handleSocioPercentualChange = (socio_id, percentualStr) => {
-        const percentual = parseFloat(percentualStr) / 100; // Convert from 50 to 0.5
+        const percentualInt = parseFloat(percentualStr); // agora mantemos inteiro (ex: 50)
         const otherSocios = formData.socios.filter(s => s.socio_id !== socio_id);
-        
+
         let newSocios;
-        if (percentual > 0) {
-            newSocios = [...otherSocios, { socio_id, percentual }];
+        if (!isNaN(percentualInt) && percentualInt > 0) {
+            newSocios = [...otherSocios, { socio_id, percentual: percentualInt }];
         } else {
             newSocios = otherSocios;
         }
@@ -81,9 +81,8 @@ const EntradaForm = () => {
         setError(null);
         
         const totalPercentual = formData.socios.reduce((sum, s) => sum + s.percentual, 0);
-        // Use a tolerance for floating point comparison
-        if (Math.abs(totalPercentual - 1.0) > 0.001) {
-            setError(`A soma dos percentuais dos sócios deve ser 100%. Soma atual: ${(totalPercentual * 100).toFixed(0)}%`);
+        if (Math.abs(totalPercentual - 100) > 0.001) {
+            setError(`A soma dos percentuais dos sócios deve ser 100%. Soma atual: ${totalPercentual.toFixed(0)}%`);
             return;
         }
 
@@ -93,7 +92,8 @@ const EntradaForm = () => {
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
                     ...formData,
-                    valor: parseFloat(formData.valor)
+                    valor: parseFloat(formData.valor),
+                    socios: formData.socios.map(s => ({ socio_id: s.socio_id, percentual: s.percentual }))
                 }),
             });
             if (!response.ok) {

@@ -21,6 +21,21 @@ const Lancamentos = () => {
         carregarDados();
     }, [filtroAno, filtroMes]);
 
+    // Inicializar filtros a partir de parâmetros da URL (ex: ?mes=12&ano=2025)
+    useEffect(() => {
+        try {
+            const params = new URLSearchParams(window.location.search);
+            const mesParam = params.get('mes');
+            const anoParam = params.get('ano');
+            if (anoParam && !isNaN(parseInt(anoParam))) {
+                setFiltroAno(parseInt(anoParam));
+            }
+            if (mesParam && !isNaN(parseInt(mesParam))) {
+                setFiltroMes(String(parseInt(mesParam)));
+            }
+        } catch {}
+    }, []);
+
     const carregarDados = async () => {
         try {
             const [entradasRes, despesasRes, sociosRes, clientesRes] = await Promise.all([
@@ -71,7 +86,7 @@ const Lancamentos = () => {
     };
 
     const iniciarEdicaoEntrada = (entrada) => {
-        // Criar cópia profunda para edição
+        // Criar cópia profunda para edição mantendo percentual inteiro já armazenado
         const copiaEntrada = {
             ...entrada,
             socios: entrada.socios ? entrada.socios.map(s => ({ ...s })) : []
@@ -168,7 +183,10 @@ const Lancamentos = () => {
                     cliente_id: editandoEntrada.cliente_id,
                     data: editandoEntrada.data,
                     valor: parseFloat(editandoEntrada.valor),
-                    socios: editandoEntrada.socios || []
+                    socios: (editandoEntrada.socios || []).map(s => ({
+                        socio_id: s.socio_id,
+                        percentual: parseFloat(s.percentual)
+                    }))
                 })
             });
 
@@ -406,7 +424,7 @@ const Lancamentos = () => {
                                                 <td style={tdStyle}>{formatarMoeda(entrada.valor)}</td>
                                                 <td style={tdStyle}>
                                                     {entrada.socios?.map(s => {
-                                                        return s.socio ? `${s.socio.nome} (${s.percentual}%)` : '';
+                                                        return s.socio ? `${s.socio.nome} (${s.percentual.toFixed(2)}%)` : '';
                                                     }).filter(Boolean).join(', ') || 'N/A'}
                                                 </td>
                                                 <td style={tdStyle}>

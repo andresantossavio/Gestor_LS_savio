@@ -533,6 +533,24 @@ def api_deletar_socio(socio_id: int, db: Session = Depends(get_db)):
     crud_contabilidade.delete_socio(db=db, socio_id=socio_id)
     return {"ok": True}
 
+# Aporte de Capital do Sócio
+@app.post("/api/contabilidade/socios/{socio_id}/aportes")
+def api_aporte_capital(
+    socio_id: int,
+    aporte: schemas.AporteCapitalCreate,
+    db: Session = Depends(get_db)
+):
+    try:
+        return crud_contabilidade.registrar_aporte_capital(
+            db=db,
+            socio_id=socio_id,
+            valor=aporte.valor,
+            data=aporte.data,
+            forma=aporte.forma
+        )
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
 # Endpoints para Entradas
 @app.post("/api/contabilidade/entradas", response_model=schemas.Entrada, status_code=201)
 def api_criar_entrada(entrada: schemas.EntradaCreate, db: Session = Depends(get_db)):

@@ -62,7 +62,10 @@ function App() {
             {/* Rotas de Contabilidade */}
             <Route path="/contabilidade/entradas/nova" element={<EntradaForm />} />
             <Route path="/contabilidade/despesas/nova" element={<DespesaForm />} />
-            <Route path="/contabilidade/lancamentos" element={<LancamentosContabeis />} />
+            {/* Gerenciar Entradas/Despesas */}
+            <Route path="/contabilidade/lancamentos" element={<Lancamentos />} />
+            {/* Lançamentos Contábeis */}
+            <Route path="/contabilidade/lancamentos-contabeis" element={<LancamentosContabeis />} />
             <Route path="/contabilidade/plano-contas" element={<PlanoContas />} />
             <Route path="/contabilidade/balanco" element={<Balanco />} />
             <Route path="/contabilidade/dmpl" element={<DMPL />} />

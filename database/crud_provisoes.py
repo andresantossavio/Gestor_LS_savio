@@ -126,23 +126,29 @@ def calcular_e_provisionar_entrada(db: Session, entrada_id: int) -> Dict:
         percentual_contrib_admin,
         salario_minimo
     )
-    
+
+    # 5% do lucro líquido já embutido na função iterativa (não gerar campo separado)
+
     # 7. Calcular fundo de reserva (10%)
     fundo_reserva = lucro_liquido * 0.10
     
     # 8. Calcular lucro disponível total (85%)
     lucro_disponivel_total = lucro_liquido * 0.85
     
-    # 9. Distribuir lucro disponível entre TODOS os sócios desta entrada
+    # 9. Distribuir lucro disponível (85%) somente entre sócios NÃO administradores.
+    # Administrador terá remuneração via pró-labore; não entra na lista de distribuição.
     distribuicao_socios = []
     
     entradas_socios = db.query(models.EntradaSocio).filter(
         models.EntradaSocio.entrada_id == entrada_id
     ).all()
     
-    for entrada_socio in entradas_socios:
-        socio = db.query(models.Socio).filter(models.Socio.id == entrada_socio.socio_id).first()
-        if socio:
+    # Somente percentuais específicos da entrada definem participação.
+    if entradas_socios:
+        for entrada_socio in entradas_socios:
+            socio = db.query(models.Socio).filter(models.Socio.id == entrada_socio.socio_id).first()
+            if not socio or (admin_socio and socio.id == admin_socio.id):
+                continue
             lucro_socio = lucro_disponivel_total * (entrada_socio.percentual / 100.0)
             distribuicao_socios.append({
                 "socio_id": socio.id,
@@ -164,6 +170,7 @@ def calcular_e_provisionar_entrada(db: Session, entrada_id: int) -> Dict:
         provisao_existente.aliquota_simples = aliquota_efetiva
         provisao_existente.imposto_provisionado = imposto_entrada
         provisao_existente.lucro_bruto = lucro_bruto
+        # Registrar valores por entrada para geração correta das provisões
         provisao_existente.pro_labore_previsto = pro_labore
         provisao_existente.inss_patronal_previsto = inss_patronal
         provisao_existente.inss_pessoal_previsto = inss_pessoal

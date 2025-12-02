@@ -2,6 +2,8 @@ from sqlalchemy.orm import Session, joinedload
 from typing import List, Optional
 from . import models
 from backend import schemas
+from datetime import date as date_type
+from . import crud_plano_contas
 
 # =================================================================
 # CRUD for ConfiguracaoContabil
@@ -71,28 +73,89 @@ def delete_socio(db: Session, socio_id: int) -> Optional[models.Socio]:
     return db_socio
 
 # =================================================================
+# Aportes de Capital
+# =================================================================
+
+def registrar_aporte_capital(
+    db: Session,
+    socio_id: int,
+    valor: float,
+    data: date_type,
+    forma: str = 'dinheiro'
+) -> dict:
+    """Registra um aporte de capital (dinheiro ou bens) e lança o lançamento contábil.
+
+    Lançamentos:
+    - Dinheiro: D 1.1.1 (Caixa e Bancos) / C 3.1 (Capital Social)
+    - Bens:     D 1.2.1.1 (Equipamentos e Móveis) / C 3.1 (Capital Social)
+    """
+    socio = get_socio(db, socio_id)
+    if not socio:
+        raise ValueError("Sócio não encontrado")
+
+    conta_capital = crud_plano_contas.buscar_conta_por_codigo(db, "3.1")
+    if not conta_capital:
+        raise ValueError("Conta Capital Social (3.1) não encontrada no plano de contas")
+
+    if forma == 'bens':
+        conta_debito = crud_plano_contas.buscar_conta_por_codigo(db, "1.2.1.1")  # Equipamentos e Móveis
+        historico = f"Aporte de capital em bens - {socio.nome}"
+    else:
+        conta_debito = crud_plano_contas.buscar_conta_por_codigo(db, "1.1.1")  # Caixa e Bancos
+        historico = f"Aporte de capital em dinheiro - {socio.nome}"
+
+    if not conta_debito:
+        raise ValueError("Conta de débito para aporte não encontrada no plano de contas")
+
+    lanc = models.LancamentoContabil(
+        data=data,
+        conta_debito_id=conta_debito.id,
+        conta_credito_id=conta_capital.id,
+        valor=valor,
+        historico=historico,
+        automatico=True,
+        editavel=False,
+        tipo_lancamento='efetivo'
+    )
+    db.add(lanc)
+
+    # Atualiza capital social do sócio
+    socio.capital_social = (socio.capital_social or 0.0) + float(valor)
+
+    db.commit()
+    db.refresh(lanc)
+    db.refresh(socio)
+
+    return {
+        "socio_id": socio.id,
+        "novo_capital_social": socio.capital_social,
+        "lancamento_id": lanc.id
+    }
+
+# =================================================================
 # CRUD for Entrada (with business logic)
 # =================================================================
 
 def create_entrada(db: Session, entrada: schemas.EntradaCreate) -> models.Entrada:
     """
-    Cria uma nova entrada, distribui os valores para o administrador,
-    fundo de reserva e sócios, e atualiza os saldos.
+    Cria uma nova entrada.
+    Ajuste: remover crédito imediato de 5% para administrador.
+    Apenas reserva de 10% é destacada aqui; percentuais dos sócios definem
+    participação para saldo distribuído preliminar (não inclui pró-labore).
+    Pró-labore e 5% do lucro líquido do administrador serão tratados em provisões.
     """
     config = get_configuracao(db)
     # Suposição: O primeiro sócio com 'Administrador' na função é o admin.
     admin_socio = db.query(models.Socio).filter(models.Socio.funcao.ilike('%administrador%')).first()
 
     valor_total = entrada.valor
-    valor_admin = valor_total * config.percentual_administrador
     valor_fundo = valor_total * config.percentual_fundo_reserva
-    valor_restante = valor_total - valor_admin - valor_fundo
+    valor_restante = valor_total - valor_fundo
 
     fundo_reserva = get_or_create_fundo(db, nome="Fundo de Reserva")
     fundo_reserva.saldo += valor_fundo
 
-    if admin_socio:
-        admin_socio.saldo += valor_admin
+    # Removido crédito imediato do administrador (5%) para evitar dupla contagem
     
     entrada_data = entrada.dict(exclude={'socios'})
     db_entrada = models.Entrada(**entrada_data)
@@ -101,14 +164,16 @@ def create_entrada(db: Session, entrada: schemas.EntradaCreate) -> models.Entrad
 
     for socio_assoc_data in entrada.socios:
         socio = get_socio(db, socio_id=socio_assoc_data.socio_id)
+        percentual_int = socio_assoc_data.percentual  # já inteiro
         if socio:
-            valor_socio = valor_restante * socio_assoc_data.percentual
+            valor_socio = valor_restante * (percentual_int / 100.0)
+            # Administrador recebe apenas participação se tiver percentual atribuído
             socio.saldo += valor_socio
-        
+
         db_assoc = models.EntradaSocio(
             entrada_id=db_entrada.id,
             socio_id=socio_assoc_data.socio_id,
-            percentual=socio_assoc_data.percentual
+            percentual=percentual_int  # armazenado como inteiro
         )
         db.add(db_assoc)
 
@@ -205,14 +270,49 @@ def update_entrada(db: Session, entrada_id: int, entrada: schemas.EntradaCreate)
     return db_entrada
 
 def delete_entrada(db: Session, entrada_id: int) -> models.Entrada:
-    """Exclui uma entrada."""
+    """Exclui uma entrada revertendo efeitos em saldos, fundo e lançamentos.
+    Passos:
+    1. Carrega entrada e sócios associados.
+    2. Reverte saldo dos sócios (parte que haviam recebido na criação).
+    3. Reverte saldo do Fundo de Reserva.
+    4. Remove provisão por entrada (se existir).
+    5. Remove lançamentos contábeis ligados à entrada.
+    6. Remove associações EntradaSocio e a própria entrada.
+    """
     db_entrada = db.query(models.Entrada).filter(models.Entrada.id == entrada_id).first()
     if not db_entrada:
         return None
-    
-    # Excluir associações com sócios primeiro
-    db.query(models.EntradaSocio).filter(models.EntradaSocio.entrada_id == entrada_id).delete()
-    
+
+    # Configuração (percentual fundo)
+    config = get_configuracao(db)
+    percentual_fundo = config.percentual_fundo_reserva if config else 0.10
+    valor_fundo = (db_entrada.valor or 0) * percentual_fundo
+    valor_restante = (db_entrada.valor or 0) - valor_fundo
+
+    # Reverter saldo dos sócios conforme percentuais da entrada
+    entrada_socios = db.query(models.EntradaSocio).filter(models.EntradaSocio.entrada_id == entrada_id).all()
+    for es in entrada_socios:
+        socio = get_socio(db, es.socio_id)
+        if socio:
+            socio.saldo -= valor_restante * (es.percentual / 100.0)
+
+    # Reverter fundo de reserva
+    if valor_fundo > 0:
+        fundo_reserva = get_or_create_fundo(db, "Fundo de Reserva")
+        fundo_reserva.saldo = max(fundo_reserva.saldo - valor_fundo, 0.0)
+
+    # Remover provisão por entrada (se ainda existir)
+    provisao = db.query(models.ProvisaoEntrada).filter(models.ProvisaoEntrada.entrada_id == entrada_id).first()
+    if provisao:
+        db.delete(provisao)
+
+    # Remover lançamentos contábeis vinculados
+    db.query(models.LancamentoContabil).filter(models.LancamentoContabil.entrada_id == entrada_id).delete(synchronize_session=False)
+
+    # Remover associações sócios
+    db.query(models.EntradaSocio).filter(models.EntradaSocio.entrada_id == entrada_id).delete(synchronize_session=False)
+
+    # Remover entrada
     db.delete(db_entrada)
     db.commit()
     return db_entrada
@@ -662,6 +762,14 @@ def consolidar_dre_mes(db: Session, mes: str, forcar_recalculo: bool = False) ->
     
     db.commit()
     db.refresh(db_dre)
+
+    # Registrar fechamento do resultado no razão para refletir no PL (3.3)
+    try:
+        from database.crud_plano_contas import registrar_fechamento_resultado
+        registrar_fechamento_resultado(db, mes, db_dre.lucro_liquido, recriar=forcar_recalculo)
+    except Exception as e:
+        # Falha no fechamento não impede a consolidação da DRE
+        print(f"[WARN] Falha ao registrar fechamento do resultado para {mes}: {e}")
     return db_dre
 
 def desconsolidar_dre_mes(db: Session, mes: str) -> Optional[models.DREMensal]:
@@ -679,6 +787,35 @@ def desconsolidar_dre_mes(db: Session, mes: str) -> Optional[models.DREMensal]:
     if dre:
         dre.consolidado = False
         dre.data_consolidacao = None
+        # Remover provisões mensais de pró-labore e INSS geradas na consolidação anterior
+        try:
+            from .crud_plano_contas import buscar_conta_por_codigo
+            conta_pro_labore_passivo = buscar_conta_por_codigo(db, "2.1.3.1")
+            conta_inss_passivo = buscar_conta_por_codigo(db, "2.1.2.2")
+            conta_simples_passivo = buscar_conta_por_codigo(db, "2.1.2.1")
+            conta_fundo_reserva = buscar_conta_por_codigo(db, "3.2.2")
+            conta_lucros_distribuidos = buscar_conta_por_codigo(db, "3.4")
+            ids_credito = []
+            if conta_pro_labore_passivo:
+                ids_credito.append(conta_pro_labore_passivo.id)
+            if conta_inss_passivo:
+                ids_credito.append(conta_inss_passivo.id)
+            if conta_simples_passivo:
+                ids_credito.append(conta_simples_passivo.id)
+            if conta_fundo_reserva:
+                ids_credito.append(conta_fundo_reserva.id)
+            if conta_lucros_distribuidos:
+                ids_credito.append(conta_lucros_distribuidos.id)
+            if ids_credito:
+                db.query(models.LancamentoContabil).filter(
+                    models.LancamentoContabil.referencia_mes == mes,
+                    models.LancamentoContabil.tipo_lancamento == 'provisao',
+                    models.LancamentoContabil.entrada_id == None,
+                    models.LancamentoContabil.despesa_id == None,
+                    models.LancamentoContabil.conta_credito_id.in_(ids_credito)
+                ).delete(synchronize_session=False)
+        except Exception as e:
+            print(f"[WARN] Falha ao remover provisões mensais ao desconsolidar {mes}: {e}")
         db.commit()
         db.refresh(dre)
     return dre

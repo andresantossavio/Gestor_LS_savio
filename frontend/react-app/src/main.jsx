@@ -23,6 +23,11 @@ import DRE from './pages/DRE'
 import ProLabore from './pages/ProLabore'
 import ConfigSimples from './pages/ConfigSimples'
 import Lancamentos from './pages/Lancamentos'
+import PlanoContas from './pages/PlanoContas'
+import LancamentosContabeis from './pages/LancamentosContabeis'
+import Balanco from './pages/Balanco'
+import DMPL from './pages/DMPL'
+import DFC from './pages/DFC'
 import Sidebar from './components/Sidebar'
 
 import './styles.css';
@@ -57,7 +62,11 @@ function App() {
             {/* Rotas de Contabilidade */}
             <Route path="/contabilidade/entradas/nova" element={<EntradaForm />} />
             <Route path="/contabilidade/despesas/nova" element={<DespesaForm />} />
-            <Route path="/contabilidade/lancamentos" element={<Lancamentos />} />
+            <Route path="/contabilidade/lancamentos" element={<LancamentosContabeis />} />
+            <Route path="/contabilidade/plano-contas" element={<PlanoContas />} />
+            <Route path="/contabilidade/balanco" element={<Balanco />} />
+            <Route path="/contabilidade/dmpl" element={<DMPL />} />
+            <Route path="/contabilidade/dfc" element={<DFC />} />
             <Route path="/contabilidade/socios" element={<SocioPage />} />
             <Route path="/contabilidade/dre" element={<DRE />} />
             <Route path="/contabilidade/pro-labore" element={<ProLabore />} />

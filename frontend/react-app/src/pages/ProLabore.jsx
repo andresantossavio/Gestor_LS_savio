@@ -63,20 +63,22 @@ function ProLabore() {
       // Transformar os dados para o formato esperado pela UI
       const dadosFormatados = data.meses.map(mes => {
         // Backend já retorna INSS pessoal e patronal calculados corretamente
-        const inssTotal = mes.inss_pessoal + mes.inss_patronal;
+        const inssPessoal = mes.inss_pessoal || 0;
+        const inssPatronal = mes.inss_patronal || 0;
+        const inssTotal = inssPessoal + inssPatronal;
         
         return {
           mes: `${mes.ano}-${String(mes.mes).padStart(2, '0')}`,
-          lucro_liquido: mes.lucro_liquido,
-          proLaboreBruto: mes.pro_labore_bruto,
-          inssPessoal: mes.inss_pessoal,
-          inssPatronal: mes.inss_patronal,
+          lucro_liquido: mes.lucro_liquido || 0,
+          proLaboreBruto: mes.pro_labore_bruto || 0,
+          inssPessoal: inssPessoal,
+          inssPatronal: inssPatronal,
           inssTotal: inssTotal,
-          proLaboreLiquido: mes.pro_labore_liquido,
-          lucroFinal: mes.lucro_final_socio,
-          percentualContribuicao: mes.percentual_contribuicao,
-          faturamentoTotal: mes.faturamento_total,
-          contribuicaoSocio: mes.contribuicao_socio
+          proLaboreLiquido: mes.pro_labore_liquido || 0,
+          lucroFinal: mes.lucro_final_socio || 0,
+          percentualContribuicao: mes.percentual_contribuicao || 0,
+          faturamentoTotal: mes.faturamento_total || 0,
+          contribuicaoSocio: mes.contribuicao_socio || 0
         };
       });
       
@@ -106,12 +108,12 @@ function ProLabore() {
 
   const calcularTotais = () => {
     return dados.reduce((acc, mes) => ({
-      proLaboreBruto: acc.proLaboreBruto + mes.proLaboreBruto,
-      inssPessoal: acc.inssPessoal + mes.inssPessoal,
-      inssPatronal: acc.inssPatronal + mes.inssPatronal,
-      inssTotal: acc.inssTotal + mes.inssTotal,
-      proLaboreLiquido: acc.proLaboreLiquido + mes.proLaboreLiquido,
-      lucroFinal: acc.lucroFinal + mes.lucroFinal
+      proLaboreBruto: acc.proLaboreBruto + (mes.proLaboreBruto || 0),
+      inssPessoal: acc.inssPessoal + (mes.inssPessoal || 0),
+      inssPatronal: acc.inssPatronal + (mes.inssPatronal || 0),
+      inssTotal: acc.inssTotal + (mes.inssTotal || 0),
+      proLaboreLiquido: acc.proLaboreLiquido + (mes.proLaboreLiquido || 0),
+      lucroFinal: acc.lucroFinal + (mes.lucroFinal || 0)
     }), {
       proLaboreBruto: 0,
       inssPessoal: 0,

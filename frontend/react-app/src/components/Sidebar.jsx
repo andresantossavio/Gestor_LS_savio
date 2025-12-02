@@ -7,8 +7,17 @@ const menuItems = [
     { name: 'Processos', to: '/processos', icon: '⚖️' },
     {
         name: 'Contabilidade',
-        to: '/contabilidade',
-        icon: '💰'
+        icon: '💰',
+        subItems: [
+            { name: 'Painel Contábil', to: '/contabilidade', icon: '📊' },
+            { name: 'Plano de Contas', to: '/contabilidade/plano-contas', icon: '📑' },
+            { name: 'Lançamentos Contábeis', to: '/contabilidade/lancamentos', icon: '📝' },
+            { name: 'Balanço Patrimonial', to: '/contabilidade/balanco', icon: '📈' },
+            { name: 'DMPL', to: '/contabilidade/dmpl', icon: '📉' },
+            { name: 'DFC', to: '/contabilidade/dfc', icon: '💵' },
+            { name: 'DRE', to: '/contabilidade/dre', icon: '📋' },
+            { name: 'Pró-Labore', to: '/contabilidade/pro-labore', icon: '💰' }
+        ]
     },
     { name: 'Tarefas', to: '/tarefas', icon: '✅' },
     { name: 'Clientes', to: '/clientes', icon: '👤' },
@@ -50,7 +59,8 @@ const MenuItem = ({ item }) => {
     const navigate = useNavigate();
     const location = useLocation();
     const [isHovered, setIsHovered] = useState(false);
-    const isActive = location.pathname === item.to;
+    const [isExpanded, setIsExpanded] = useState(false);
+    const isActive = location.pathname === item.to || (item.subItems && item.subItems.some(sub => location.pathname === sub.to));
 
     const baseStyle = {
         display: 'flex',
@@ -81,39 +91,45 @@ const MenuItem = ({ item }) => {
 
     return (
         <div>
-            {item.to === '/contabilidade' ? (
-                <a
-                    href="/contabilidade"
-                    style={{ ...(isHovered ? hoverStyle : baseStyle), display: 'flex', textDecoration: 'none' }}
-                    onMouseEnter={() => setIsHovered(true)}
-                    onMouseLeave={() => setIsHovered(false)}
-                >
-                    <span style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                        {item.icon && <span style={{ fontSize: '18px' }}>{item.icon}</span>}
-                        <span>{item.name}</span>
-                    </span>
-                </a>
-            ) : (
-                <div
-                    role="button"
-                    style={isHovered ? hoverStyle : baseStyle}
-                    onMouseEnter={() => setIsHovered(true)}
-                    onMouseLeave={() => setIsHovered(false)}
-                    onClick={() => {
+            <div
+                role="button"
+                style={isHovered ? hoverStyle : baseStyle}
+                onMouseEnter={() => setIsHovered(true)}
+                onMouseLeave={() => setIsHovered(false)}
+                onClick={() => {
+                    if (item.subItems) {
+                        setIsExpanded(!isExpanded);
+                    } else {
                         try {
                             console.debug('[Sidebar] Click nav item:', item.name, '->', item.to);
                         } catch (_) { /* noop */ }
                         navigate(item.to);
-                    }}
-                >
-                    <span style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                        {item.icon && <span style={{ fontSize: '18px' }}>{item.icon}</span>}
-                        <span>{item.name}</span>
+                    }
+                }}
+            >
+                <span style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                    {item.icon && <span style={{ fontSize: '18px' }}>{item.icon}</span>}
+                    <span>{item.name}</span>
+                </span>
+                {item.subItems && (
+                    <span style={{ fontSize: '12px', transition: 'transform 0.2s', transform: isExpanded ? 'rotate(180deg)' : 'rotate(0deg)' }}>
+                        ▼
                     </span>
+                )}
+            </div>
+            
+            {item.subItems && isExpanded && (
+                <div style={{ marginLeft: '16px', marginTop: '4px', marginBottom: '8px' }}>
+                    {item.subItems.map(subItem => (
+                        <SubMenuItem
+                            key={subItem.to}
+                            subItem={subItem}
+                            isActive={location.pathname === subItem.to}
+                            onClick={() => navigate(subItem.to)}
+                        />
+                    ))}
                 </div>
             )}
-            
-            
         </div>
     );
 };

@@ -406,9 +406,8 @@ const Lancamentos = () => {
                                                 <td style={tdStyle}>{formatarMoeda(entrada.valor)}</td>
                                                 <td style={tdStyle}>
                                                     {entrada.socios?.map(s => {
-                                                        const socio = socios.find(soc => soc.id === s.socio_id);
-                                                        return socio ? `${socio.nome} (${s.percentual}%)` : '';
-                                                    }).join(', ') || 'N/A'}
+                                                        return s.socio ? `${s.socio.nome} (${s.percentual}%)` : '';
+                                                    }).filter(Boolean).join(', ') || 'N/A'}
                                                 </td>
                                                 <td style={tdStyle}>
                                                     <button 

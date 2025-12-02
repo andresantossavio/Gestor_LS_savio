@@ -500,3 +500,77 @@ class TempoMedioPorTipo(BaseModel):
     tipo: str
     tempo_medio_dias: float
     quantidade_concluidas: int
+
+
+# ==================== SCHEMAS PARA SISTEMA DE PROVISÕES ====================
+
+class PagamentoProLaboreCreate(BaseModel):
+    """Schema para registrar pagamento parcial de pró-labore"""
+    mes: int
+    ano: int
+    valor: float
+    data_pagamento: date
+    observacao: Optional[str] = None
+
+class PagamentoINSSCreate(BaseModel):
+    """Schema para registrar pagamento de INSS (patronal + pessoal)"""
+    mes: int
+    ano: int
+    valor: float
+    data_pagamento: date
+    observacao: Optional[str] = None
+
+class PagamentoSimplesCreate(BaseModel):
+    """Schema para registrar pagamento de Simples Nacional"""
+    mes: int
+    ano: int
+    valor: float
+    data_pagamento: date
+    observacao: Optional[str] = None
+
+class PagamentoLucroSocioCreate(BaseModel):
+    """Schema para registrar saque de lucro de um sócio"""
+    mes: int
+    ano: int
+    socio_id: int
+    valor: float
+    data_pagamento: date
+    observacao: Optional[str] = None
+
+class SaldoDisponivel(BaseModel):
+    """Schema para resposta de saldos disponíveis"""
+    previsto: float
+    pago: float
+    disponivel: float
+
+class LucroSocioDisponivel(BaseModel):
+    """Schema para lucro disponível de um sócio"""
+    socio_id: int
+    nome: str
+    previsto: float
+    pago: float
+    disponivel: float
+
+class SaldosDisponiveisMes(BaseModel):
+    """Schema para resposta completa de saldos disponíveis do mês"""
+    mes: int
+    ano: int
+    mes_referencia: str
+    pro_labore: SaldoDisponivel
+    inss: dict  # Contém previsto, patronal_previsto, pessoal_previsto, pago, disponivel
+    simples: SaldoDisponivel
+    fundo_reserva: dict  # Contém previsto
+    lucros_por_socio: List[LucroSocioDisponivel]
+
+class ProvisaoEntradaDetalhada(BaseModel):
+    """Schema para exibir detalhes de uma provisão"""
+    provisao_id: int
+    entrada_id: int
+    data: str
+    cliente: str
+    valor_entrada: float
+    imposto_provisionado: float
+    pro_labore_previsto: float
+    inss_total_previsto: float
+    fundo_reserva_previsto: float
+    distribuicao_socios: List[dict]

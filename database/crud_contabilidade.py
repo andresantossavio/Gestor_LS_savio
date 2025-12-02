@@ -121,18 +121,50 @@ def get_entradas(db: Session, skip: int = 0, limit: int = 100) -> List[models.En
     return db.query(models.Entrada).options(joinedload(models.Entrada.socios)).offset(skip).limit(limit).all()
 
 def update_entrada(db: Session, entrada_id: int, entrada: schemas.EntradaCreate) -> models.Entrada:
-    """Atualiza uma entrada existente, incluindo as porcentagens dos sócios."""
+    """
+    Atualiza uma entrada existente, incluindo as porcentagens dos sócios.
+    
+    IMPORTANTE: Recalcula provisões e lançamentos contábeis automaticamente.
+    """
+    from .crud_provisoes import calcular_e_provisionar_entrada
+    from . import crud_plano_contas
+    
     db_entrada = db.query(models.Entrada).filter(models.Entrada.id == entrada_id).first()
     if not db_entrada:
         return None
     
-    # Atualizar campos básicos
+    # Verificar se há pagamentos parciais já realizados para esta entrada
+    # Se houver, bloquear edição
+    lancamentos_pagamento = db.query(models.LancamentoContabil).filter(
+        models.LancamentoContabil.entrada_id == entrada_id,
+        models.LancamentoContabil.tipo_lancamento.in_(['pagamento_pro_labore', 'pagamento_lucro', 'pagamento_imposto'])
+    ).first()
+    
+    if lancamentos_pagamento:
+        raise ValueError(
+            "Não é possível editar esta entrada pois já existem pagamentos parciais realizados. "
+            "Estorne os pagamentos antes de editar."
+        )
+    
+    # 1. Deletar provisão antiga (se existir)
+    provisao_antiga = db.query(models.ProvisaoEntrada).filter(
+        models.ProvisaoEntrada.entrada_id == entrada_id
+    ).first()
+    if provisao_antiga:
+        db.delete(provisao_antiga)
+    
+    # 2. Deletar lançamentos contábeis antigos (já configurado com cascade, mas fazemos explícito)
+    db.query(models.LancamentoContabil).filter(
+        models.LancamentoContabil.entrada_id == entrada_id
+    ).delete()
+    
+    # 3. Atualizar campos básicos
     for key, value in entrada.dict(exclude={'socios'}).items():
         setattr(db_entrada, key, value)
     
-    # Se socios foram fornecidos, atualizar as porcentagens
+    # 4. Se socios foram fornecidos, atualizar as porcentagens
     if entrada.socios:
-        # 1. Reverter os saldos dos sócios anteriores
+        # 4a. Reverter os saldos dos sócios anteriores
         entradas_socios_antigas = db.query(models.EntradaSocio).filter(
             models.EntradaSocio.entrada_id == entrada_id
         ).all()
@@ -143,10 +175,10 @@ def update_entrada(db: Session, entrada_id: int, entrada: schemas.EntradaCreate)
                 valor_antigo = (assoc.percentual / 100) * db_entrada.valor
                 socio.saldo -= valor_antigo
         
-        # 2. Excluir associações antigas
+        # 4b. Excluir associações antigas
         db.query(models.EntradaSocio).filter(models.EntradaSocio.entrada_id == entrada_id).delete()
         
-        # 3. Criar novas associações e atualizar saldos
+        # 4c. Criar novas associações e atualizar saldos
         for socio_assoc_data in entrada.socios:
             socio = get_socio(db, socio_id=socio_assoc_data.socio_id)
             if socio:
@@ -162,6 +194,14 @@ def update_entrada(db: Session, entrada_id: int, entrada: schemas.EntradaCreate)
     
     db.commit()
     db.refresh(db_entrada)
+    
+    # 5. Recalcular provisões e criar novos lançamentos contábeis
+    try:
+        crud_plano_contas.lancar_entrada_honorarios(db, entrada_id)
+    except Exception as e:
+        print(f"⚠️  Erro ao recalcular lançamentos para entrada {entrada_id}: {e}")
+        # Não faz rollback para não perder a atualização da entrada
+    
     return db_entrada
 
 def delete_entrada(db: Session, entrada_id: int) -> models.Entrada:
@@ -540,15 +580,50 @@ def consolidar_dre_mes(db: Session, mes: str, forcar_recalculo: bool = False) ->
     # 6. Calcular lucro bruto (antes de pró-labore e INSS)
     lucro_bruto = receita_bruta - imposto - despesas_gerais
     
-    # 7. Calcular pró-labore e INSS de forma iterativa
+    # 7. Calcular percentual de contribuição do administrador no mês
+    admin_socio = db.query(models.Socio).filter(
+        models.Socio.funcao.ilike('%administrador%')
+    ).first()
+    
+    percentual_contrib_admin = 100.0  # Default se não tiver sócio admin
+    
+    if admin_socio:
+        # Calcular contribuição do admin no mês
+        entradas_mes = db.query(models.Entrada).filter(
+            models.Entrada.data >= inicio,
+            models.Entrada.data <= fim
+        ).all()
+        
+        contribuicao_admin = 0.0
+        faturamento_total = 0.0
+        
+        for entrada in entradas_mes:
+            faturamento_total += float(entrada.valor or 0)
+            entrada_socio = db.query(models.EntradaSocio).filter(
+                models.EntradaSocio.entrada_id == entrada.id,
+                models.EntradaSocio.socio_id == admin_socio.id
+            ).first()
+            
+            if entrada_socio:
+                percentual = float(entrada_socio.percentual or 0)
+                contribuicao_admin += float(entrada.valor or 0) * (percentual / 100)
+        
+        if faturamento_total > 0:
+            percentual_contrib_admin = (contribuicao_admin / faturamento_total) * 100
+    
+    # 8. Calcular pró-labore e INSS de forma iterativa
     config = get_configuracao(db)
     salario_minimo = config.salario_minimo if config else 1518.0
-    pro_labore, inss_patronal, inss_pessoal, lucro_liquido = calcular_pro_labore_iterativo(lucro_bruto, salario_minimo)
+    pro_labore, inss_patronal, inss_pessoal, lucro_liquido = calcular_pro_labore_iterativo(
+        lucro_bruto, 
+        percentual_contrib_admin,
+        salario_minimo
+    )
     
-    # 8. Calcular reserva 10%
+    # 9. Calcular reserva 10%
     reserva_10p = lucro_liquido * 0.10
     
-    # 9. Salvar ou atualizar DRE
+    # 10. Salvar ou atualizar DRE
     if dre_existente:
         dre_existente.receita_bruta = receita_bruta
         dre_existente.receita_12m = receita_12m

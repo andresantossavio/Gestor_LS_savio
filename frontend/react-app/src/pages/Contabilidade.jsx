@@ -72,7 +72,6 @@ const Dashboard = () => {
     if (loading) {
         return (
             <div style={{ padding: 20 }}>
-                <Header title="Painel de Contabilidade" />
                 <p>Carregando dados...</p>
             </div>
         );
@@ -80,7 +79,6 @@ const Dashboard = () => {
 
     return (
         <div style={{ padding: 20 }}>
-            <Header title={`Painel de Contabilidade - ${ano}`} />
 
             <div style={{ display: 'flex', flexWrap: 'wrap', gap: '20px' }}>
                 <Widget title="Balanço Patrimonial">
@@ -157,9 +155,11 @@ const buttonStyle = {
 };
 
 const Contabilidade = () => {
+    const anoAtual = new Date().getFullYear();
+    
     return (
         <div>
-            <Header title="Contabilidade" />
+            <Header title={`Painel de Contabilidade - ${anoAtual}`} />
             <div style={{ display: 'flex', gap: '10px', marginBottom: '20px', flexWrap: 'wrap' }}>
                 <Link to="/contabilidade/entradas/nova" style={buttonStyle}>+ Nova Entrada</Link>
                 <Link to="/contabilidade/despesas/nova" style={buttonStyle}>+ Nova Despesa</Link>

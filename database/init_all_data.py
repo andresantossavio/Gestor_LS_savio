@@ -11,7 +11,7 @@ root_dir = Path(__file__).parent.parent
 sys.path.insert(0, str(root_dir))
 
 from database.database import SessionLocal, engine, Base
-from database.models import Municipio, Feriado, TipoTarefa, WorkflowTemplate
+from database.models import Municipio, Feriado, TipoTarefa, WorkflowTemplate, PlanoDeContas
 from datetime import date, datetime
 import json
 
@@ -248,12 +248,21 @@ def main():
         print("✅ INICIALIZAÇÃO COMPLETA COM SUCESSO!")
         print("=" * 70)
         
+        # Inicializar plano de contas
+        print("\n=== INICIALIZANDO PLANO DE CONTAS ===")
+        from database.init_plano_contas import inicializar_plano_contas
+        try:
+            inicializar_plano_contas(db)
+        except Exception as e:
+            print(f"  ⚠️  Erro ao inicializar plano de contas: {e}")
+        
         # Resumo
         print("\nRESUMO:")
         print(f"  - Tipos de Tarefa: {db.query(TipoTarefa).count()}")
         print(f"  - Feriados: {db.query(Feriado).count()}")
         print(f"  - Workflows: {db.query(WorkflowTemplate).count()}")
         print(f"  - Municípios: {db.query(Municipio).count()}")
+        print(f"  - Contas Contábeis: {db.query(PlanoDeContas).count()}")
         
     except Exception as e:
         print(f"\n❌ Erro durante inicialização: {e}")

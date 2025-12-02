@@ -1,13 +1,13 @@
-from fastapi import FastAPI, Depends, HTTPException, APIRouter, Query
+from fastapi import FastAPI, Depends, HTTPException, APIRouter, Query, Body, Path
 from fastapi.responses import FileResponse
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
-from pathlib import Path
+from pathlib import Path as PathLib
 from sqlalchemy.orm import Session, joinedload
 from sqlalchemy import extract, func
 from typing import Optional, List
 from database.database import SessionLocal, engine, Base
-from database import crud_clientes, crud_processos, crud_tarefas, crud_andamentos, crud_anexos, crud_pagamentos, crud_usuarios, crud_contabilidade, crud_municipios, crud_feriados, models # Import models first
+from database import crud_clientes, crud_processos, crud_tarefas, crud_andamentos, crud_anexos, crud_pagamentos, crud_usuarios, crud_contabilidade, crud_municipios, crud_feriados, crud_plano_contas, models # Import models first
 from .import_contabilidade import carregar_csv_contabilidade
 from backend import schemas # Then import schemas
 from backend import config_data # Import config data
@@ -156,7 +156,15 @@ def listar_entradas(skip: int = 0, limit: int = 100, db: Session = Depends(get_d
 
 @api_router.post("/contabilidade/entradas", response_model=schemas.Entrada)
 def criar_entrada(entrada: schemas.EntradaCreate, db: Session = Depends(get_db)):
-    return crud_contabilidade.create_entrada(db, entrada)
+    nova_entrada = crud_contabilidade.create_entrada(db, entrada)
+    
+    # Tentar criar lançamento contábil automaticamente
+    try:
+        crud_plano_contas.lancar_entrada_honorarios(db, nova_entrada.id)
+    except Exception as e:
+        print(f"⚠️  Erro ao criar lançamento contábil para entrada {nova_entrada.id}: {e}")
+    
+    return nova_entrada
 
 @api_router.put("/contabilidade/entradas/{entrada_id}", response_model=schemas.Entrada)
 def atualizar_entrada(entrada_id: int, entrada: schemas.EntradaCreate, db: Session = Depends(get_db)):
@@ -179,7 +187,15 @@ def listar_despesas(skip: int = 0, limit: int = 100, db: Session = Depends(get_d
 
 @api_router.post("/contabilidade/despesas", response_model=schemas.Despesa)
 def criar_despesa(despesa: schemas.DespesaCreate, db: Session = Depends(get_db)):
-    return crud_contabilidade.create_despesa(db, despesa)
+    nova_despesa = crud_contabilidade.create_despesa(db, despesa)
+    
+    # Tentar criar lançamento contábil automaticamente
+    try:
+        crud_plano_contas.lancar_despesa(db, nova_despesa.id)
+    except Exception as e:
+        print(f"⚠️  Erro ao criar lançamento contábil para despesa {nova_despesa.id}: {e}")
+    
+    return nova_despesa
 
 @api_router.put("/contabilidade/despesas/{despesa_id}", response_model=schemas.Despesa)
 def atualizar_despesa(despesa_id: int, despesa: schemas.DespesaCreate, db: Session = Depends(get_db)):
@@ -557,6 +573,523 @@ def inicializar_faixas_simples_endpoint(db: Session = Depends(get_db)):
         inicializar_faixas_simples(db, data_vigencia)
         return {"status": "ok", "message": "Faixas do Simples inicializadas com sucesso"}
     except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+# ===== PLANO DE CONTAS =====
+
+@api_router.get("/contabilidade/plano-contas")
+def listar_plano_contas(apenas_ativas: bool = True, db: Session = Depends(get_db)):
+    """Lista todas as contas do plano de contas"""
+    contas = crud_plano_contas.listar_plano_contas(db, apenas_ativas)
+    return [
+        {
+            "id": c.id,
+            "codigo": c.codigo,
+            "descricao": c.descricao,
+            "tipo": c.tipo,
+            "natureza": c.natureza,
+            "nivel": c.nivel,
+            "pai_id": c.pai_id,
+            "aceita_lancamento": c.aceita_lancamento,
+            "ativo": c.ativo,
+            "saldo": crud_plano_contas.calcular_saldo_conta(db, c.id)
+        }
+        for c in contas
+    ]
+
+
+@api_router.get("/contabilidade/plano-contas/{conta_id}")
+def buscar_conta(conta_id: int, db: Session = Depends(get_db)):
+    """Busca uma conta específica"""
+    conta = crud_plano_contas.buscar_conta_por_id(db, conta_id)
+    if not conta:
+        raise HTTPException(status_code=404, detail="Conta não encontrada")
+    
+    return {
+        "id": conta.id,
+        "codigo": conta.codigo,
+        "descricao": conta.descricao,
+        "tipo": conta.tipo,
+        "natureza": conta.natureza,
+        "nivel": conta.nivel,
+        "pai_id": conta.pai_id,
+        "aceita_lancamento": conta.aceita_lancamento,
+        "ativo": conta.ativo,
+        "saldo": crud_plano_contas.calcular_saldo_conta(db, conta.id)
+    }
+
+
+@api_router.post("/contabilidade/plano-contas/inicializar")
+def inicializar_plano_contas_endpoint(db: Session = Depends(get_db)):
+    """Inicializa o plano de contas padrão"""
+    from database.init_plano_contas import inicializar_plano_contas
+    try:
+        inicializar_plano_contas(db)
+        return {"status": "ok", "message": "Plano de contas inicializado com sucesso"}
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+@api_router.get("/contabilidade/balanco-patrimonial")
+def gerar_balanco_patrimonial(
+    mes: int = Query(..., ge=1, le=12),
+    ano: int = Query(..., ge=2000),
+    db: Session = Depends(get_db)
+):
+    """Gera o Balanço Patrimonial para o período especificado"""
+    balanco = crud_plano_contas.gerar_balanco_patrimonial(db, mes, ano)
+    return balanco
+
+
+# ===== SISTEMA DE PROVISÕES E PAGAMENTOS PARCIAIS =====
+
+@api_router.get("/contabilidade/saldos-disponiveis/{mes}/{ano}", response_model=schemas.SaldosDisponiveisMes)
+def obter_saldos_disponiveis(
+    mes: int = Path(..., ge=1, le=12),
+    ano: int = Path(..., ge=2000),
+    db: Session = Depends(get_db)
+):
+    """
+    Retorna saldos disponíveis do mês: provisões - pagamentos efetivos.
+    Permite visualizar quanto ainda pode ser sacado de pró-labore, lucros, etc.
+    """
+    from database.crud_provisoes import get_saldo_disponivel_mes
+    
+    saldos = get_saldo_disponivel_mes(db, mes, ano)
+    return saldos
+
+
+@api_router.get("/contabilidade/provisoes-resumo/{mes}/{ano}")
+def listar_provisoes_mes(
+    mes: int = Path(..., ge=1, le=12),
+    ano: int = Path(..., ge=2000),
+    db: Session = Depends(get_db)
+):
+    """
+    Lista todas as provisões do mês com detalhes das entradas.
+    Útil para dashboard detalhado.
+    """
+    from database.crud_provisoes import listar_provisoes_mes as listar_prov
+    
+    provisoes = listar_prov(db, mes, ano)
+    return {"mes": mes, "ano": ano, "provisoes": provisoes}
+
+
+@api_router.post("/contabilidade/pagamento-pro-labore-parcial")
+def registrar_pagamento_pro_labore(
+    pagamento: schemas.PagamentoProLaboreCreate,
+    db: Session = Depends(get_db)
+):
+    """
+    Registra pagamento parcial de pró-labore.
+    
+    Cria lançamentos:
+    - D: Pró-labore a Pagar (2.1.3.1) / C: Caixa (1.1.1) - 89% (líquido)
+    - D: Pró-labore a Pagar (2.1.3.1) / C: INSS a Recolher (2.1.2.2) - 11% (retenção)
+    """
+    from database.crud_provisoes import get_saldo_disponivel_mes
+    
+    # Validar saldo disponível
+    saldos = get_saldo_disponivel_mes(db, pagamento.mes, pagamento.ano)
+    
+    if pagamento.valor > saldos['pro_labore']['disponivel']:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Valor solicitado (R$ {pagamento.valor:.2f}) excede saldo disponível (R$ {saldos['pro_labore']['disponivel']:.2f})"
+        )
+    
+    # Buscar contas
+    conta_pro_labore_passivo = crud_plano_contas.buscar_conta_por_codigo(db, "2.1.3.1")
+    conta_caixa = crud_plano_contas.buscar_conta_por_codigo(db, "1.1.1")
+    conta_inss_passivo = crud_plano_contas.buscar_conta_por_codigo(db, "2.1.2.2")
+    
+    if not all([conta_pro_labore_passivo, conta_caixa, conta_inss_passivo]):
+        raise HTTPException(status_code=500, detail="Contas contábeis não encontradas")
+    
+    mes_referencia = f"{pagamento.ano}-{str(pagamento.mes).zfill(2)}"
+    
+    # Calcular valores
+    valor_liquido = pagamento.valor * 0.89  # 89% líquido
+    valor_inss_retido = pagamento.valor * 0.11  # 11% INSS pessoal retido
+    
+    historico_base = f"Pagamento pró-labore {pagamento.mes:02d}/{pagamento.ano}"
+    if pagamento.observacao:
+        historico_base += f" - {pagamento.observacao}"
+    
+    # Lançamento 1: Pagamento líquido
+    lanc1 = models.LancamentoContabil(
+        data=pagamento.data_pagamento,
+        conta_debito_id=conta_pro_labore_passivo.id,
+        conta_credito_id=conta_caixa.id,
+        valor=valor_liquido,
+        historico=f"{historico_base} (líquido)",
+        automatico=True,
+        editavel=False,
+        tipo_lancamento='pagamento_pro_labore',
+        referencia_mes=mes_referencia
+    )
+    db.add(lanc1)
+    
+    # Lançamento 2: Retenção INSS 11%
+    lanc2 = models.LancamentoContabil(
+        data=pagamento.data_pagamento,
+        conta_debito_id=conta_pro_labore_passivo.id,
+        conta_credito_id=conta_inss_passivo.id,
+        valor=valor_inss_retido,
+        historico=f"{historico_base} (INSS 11% retido)",
+        automatico=True,
+        editavel=False,
+        tipo_lancamento='pagamento_pro_labore',
+        referencia_mes=mes_referencia
+    )
+    db.add(lanc2)
+    
+    db.commit()
+    
+    return {
+        "status": "success",
+        "message": f"Pagamento de R$ {pagamento.valor:.2f} registrado com sucesso",
+        "valor_liquido": valor_liquido,
+        "inss_retido": valor_inss_retido,
+        "novo_saldo_disponivel": saldos['pro_labore']['disponivel'] - pagamento.valor
+    }
+
+
+@api_router.post("/contabilidade/pagamento-inss")
+def registrar_pagamento_inss(
+    pagamento: schemas.PagamentoINSSCreate,
+    db: Session = Depends(get_db)
+):
+    """
+    Registra pagamento de INSS (DARF).
+    
+    Cria lançamento:
+    - D: INSS a Recolher (2.1.2.2) / C: Caixa (1.1.1)
+    """
+    from database.crud_provisoes import get_saldo_disponivel_mes
+    
+    # Validar saldo disponível
+    saldos = get_saldo_disponivel_mes(db, pagamento.mes, pagamento.ano)
+    
+    if pagamento.valor > saldos['inss']['disponivel']:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Valor solicitado (R$ {pagamento.valor:.2f}) excede saldo disponível (R$ {saldos['inss']['disponivel']:.2f})"
+        )
+    
+    # Buscar contas
+    conta_inss_passivo = crud_plano_contas.buscar_conta_por_codigo(db, "2.1.2.2")
+    conta_caixa = crud_plano_contas.buscar_conta_por_codigo(db, "1.1.1")
+    
+    if not all([conta_inss_passivo, conta_caixa]):
+        raise HTTPException(status_code=500, detail="Contas contábeis não encontradas")
+    
+    mes_referencia = f"{pagamento.ano}-{str(pagamento.mes).zfill(2)}"
+    
+    historico = f"Pagamento DARF INSS {pagamento.mes:02d}/{pagamento.ano}"
+    if pagamento.observacao:
+        historico += f" - {pagamento.observacao}"
+    
+    lanc = models.LancamentoContabil(
+        data=pagamento.data_pagamento,
+        conta_debito_id=conta_inss_passivo.id,
+        conta_credito_id=conta_caixa.id,
+        valor=pagamento.valor,
+        historico=historico,
+        automatico=True,
+        editavel=False,
+        tipo_lancamento='pagamento_imposto',
+        referencia_mes=mes_referencia
+    )
+    db.add(lanc)
+    db.commit()
+    
+    return {
+        "status": "success",
+        "message": f"Pagamento de INSS R$ {pagamento.valor:.2f} registrado com sucesso",
+        "novo_saldo_disponivel": saldos['inss']['disponivel'] - pagamento.valor
+    }
+
+
+@api_router.post("/contabilidade/pagamento-simples")
+def registrar_pagamento_simples(
+    pagamento: schemas.PagamentoSimplesCreate,
+    db: Session = Depends(get_db)
+):
+    """
+    Registra pagamento de Simples Nacional (DAS).
+    
+    Cria lançamento:
+    - D: Simples a Recolher (2.1.2.1) / C: Caixa (1.1.1)
+    """
+    from database.crud_provisoes import get_saldo_disponivel_mes
+    
+    # Validar saldo disponível
+    saldos = get_saldo_disponivel_mes(db, pagamento.mes, pagamento.ano)
+    
+    if pagamento.valor > saldos['simples']['disponivel']:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Valor solicitado (R$ {pagamento.valor:.2f}) excede saldo disponível (R$ {saldos['simples']['disponivel']:.2f})"
+        )
+    
+    # Buscar contas
+    conta_simples_passivo = crud_plano_contas.buscar_conta_por_codigo(db, "2.1.2.1")
+    conta_caixa = crud_plano_contas.buscar_conta_por_codigo(db, "1.1.1")
+    
+    if not all([conta_simples_passivo, conta_caixa]):
+        raise HTTPException(status_code=500, detail="Contas contábeis não encontradas")
+    
+    mes_referencia = f"{pagamento.ano}-{str(pagamento.mes).zfill(2)}"
+    
+    historico = f"Pagamento DAS Simples Nacional {pagamento.mes:02d}/{pagamento.ano}"
+    if pagamento.observacao:
+        historico += f" - {pagamento.observacao}"
+    
+    lanc = models.LancamentoContabil(
+        data=pagamento.data_pagamento,
+        conta_debito_id=conta_simples_passivo.id,
+        conta_credito_id=conta_caixa.id,
+        valor=pagamento.valor,
+        historico=historico,
+        automatico=True,
+        editavel=False,
+        tipo_lancamento='pagamento_imposto',
+        referencia_mes=mes_referencia
+    )
+    db.add(lanc)
+    db.commit()
+    
+    return {
+        "status": "success",
+        "message": f"Pagamento de Simples R$ {pagamento.valor:.2f} registrado com sucesso",
+        "novo_saldo_disponivel": saldos['simples']['disponivel'] - pagamento.valor
+    }
+
+
+@api_router.post("/contabilidade/pagamento-lucro-socio")
+def registrar_pagamento_lucro_socio(
+    pagamento: schemas.PagamentoLucroSocioCreate,
+    db: Session = Depends(get_db)
+):
+    """
+    Registra saque de lucro de um sócio.
+    
+    Cria lançamento:
+    - D: Lucros Distribuídos (3.4) / C: Caixa (1.1.1)
+    """
+    from database.crud_provisoes import get_saldo_disponivel_mes
+    
+    # Validar saldo disponível
+    saldos = get_saldo_disponivel_mes(db, pagamento.mes, pagamento.ano)
+    
+    # Buscar saldo do sócio específico
+    lucro_socio = next(
+        (s for s in saldos['lucros_por_socio'] if s['socio_id'] == pagamento.socio_id),
+        None
+    )
+    
+    if not lucro_socio:
+        raise HTTPException(status_code=404, detail="Sócio não encontrado ou sem lucros neste mês")
+    
+    if pagamento.valor > lucro_socio['disponivel']:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Valor solicitado (R$ {pagamento.valor:.2f}) excede saldo disponível (R$ {lucro_socio['disponivel']:.2f})"
+        )
+    
+    # Buscar sócio
+    socio = db.query(models.Socio).filter(models.Socio.id == pagamento.socio_id).first()
+    if not socio:
+        raise HTTPException(status_code=404, detail="Sócio não encontrado")
+    
+    # Buscar contas
+    conta_lucros_distribuidos = crud_plano_contas.buscar_conta_por_codigo(db, "3.4")
+    conta_caixa = crud_plano_contas.buscar_conta_por_codigo(db, "1.1.1")
+    
+    if not all([conta_lucros_distribuidos, conta_caixa]):
+        raise HTTPException(status_code=500, detail="Contas contábeis não encontradas")
+    
+    mes_referencia = f"{pagamento.ano}-{str(pagamento.mes).zfill(2)}"
+    
+    historico = f"Saque de lucro - {socio.nome} - {pagamento.mes:02d}/{pagamento.ano}"
+    if pagamento.observacao:
+        historico += f" - {pagamento.observacao}"
+    
+    lanc = models.LancamentoContabil(
+        data=pagamento.data_pagamento,
+        conta_debito_id=conta_lucros_distribuidos.id,
+        conta_credito_id=conta_caixa.id,
+        valor=pagamento.valor,
+        historico=historico,
+        automatico=True,
+        editavel=False,
+        tipo_lancamento='pagamento_lucro',
+        referencia_mes=mes_referencia
+    )
+    db.add(lanc)
+    db.commit()
+    
+    return {
+        "status": "success",
+        "message": f"Saque de lucro de R$ {pagamento.valor:.2f} para {socio.nome} registrado com sucesso",
+        "novo_saldo_disponivel": lucro_socio['disponivel'] - pagamento.valor
+    }
+
+
+# ===== LANÇAMENTOS CONTÁBEIS =====
+
+@api_router.get("/contabilidade/lancamentos")
+def listar_lancamentos(
+    data_inicio: Optional[date_type] = None,
+    data_fim: Optional[date_type] = None,
+    conta_id: Optional[int] = None,
+    tipo_lancamento: Optional[str] = None,
+    apenas_pendentes: bool = False,
+    limit: int = 100,
+    offset: int = 0,
+    db: Session = Depends(get_db)
+):
+    """
+    Lista lançamentos contábeis com filtros.
+    
+    Novos filtros:
+    - tipo_lancamento: 'efetivo', 'provisao', 'pagamento_pro_labore', 'pagamento_lucro', 'pagamento_imposto'
+    - apenas_pendentes: True = apenas provisões não pagas
+    """
+    lancamentos = crud_plano_contas.listar_lancamentos(
+        db, data_inicio, data_fim, conta_id, tipo_lancamento, apenas_pendentes, limit, offset
+    )
+    return [
+        {
+            "id": l.id,
+            "data": l.data.isoformat(),
+            "debito_conta_id": l.conta_debito.id,
+            "debito_conta_codigo": l.conta_debito.codigo,
+            "debito_conta_nome": l.conta_debito.descricao,
+            "credito_conta_id": l.conta_credito.id,
+            "credito_conta_codigo": l.conta_credito.codigo,
+            "credito_conta_nome": l.conta_credito.descricao,
+            "valor": l.valor,
+            "historico": l.historico,
+            "automatico": l.automatico,
+            "editavel": l.editavel,
+            "criado_em": l.criado_em.isoformat() if l.criado_em else None,
+            "editado_em": l.editado_em.isoformat() if l.editado_em else None,
+            "entrada_id": l.entrada_id,
+            "despesa_id": l.despesa_id,
+            # Campos de provisão
+            "tipo_lancamento": l.tipo_lancamento,
+            "referencia_mes": l.referencia_mes,
+            "pago": l.pago,
+            "data_pagamento": l.data_pagamento.isoformat() if l.data_pagamento else None,
+            "valor_pago": l.valor_pago,
+            "saldo_pendente": l.valor - (l.valor_pago or 0) if not l.pago else 0
+        }
+        for l in lancamentos
+    ]
+
+
+@api_router.post("/contabilidade/lancamentos/{lancamento_id}/marcar-pagamento")
+def marcar_pagamento(
+    lancamento_id: int,
+    data_pagamento: date_type = Body(...),
+    valor_pago: Optional[float] = Body(None),
+    observacao: Optional[str] = Body(None),
+    db: Session = Depends(get_db)
+):
+    """
+    Marca um lançamento de provisão como pago (total ou parcial).
+    
+    Se valor_pago < valor provisionado:
+    - Marca lançamento como pago
+    - Cria lançamento(s) de pagamento efetivo
+    - Cria novo lançamento de provisão com saldo restante
+    
+    Body:
+    - data_pagamento: Data do pagamento efetivo
+    - valor_pago: Valor pago (se None, paga total). Pode ser parcial
+    - observacao: Observação para histórico
+    """
+    try:
+        resultado = crud_plano_contas.marcar_pagamento_lancamento(
+            db=db,
+            lancamento_id=lancamento_id,
+            data_pagamento=data_pagamento,
+            valor_pago=valor_pago,
+            observacao=observacao
+        )
+        return {
+            "status": "success",
+            "message": "Pagamento registrado com sucesso",
+            **resultado
+        }
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Erro ao registrar pagamento: {str(e)}")
+
+
+@api_router.post("/contabilidade/lancamentos")
+def criar_lancamento_manual(
+    data: date_type = Body(...),
+    debito_conta_id: int = Body(...),
+    credito_conta_id: int = Body(...),
+    valor: float = Body(...),
+    historico: str = Body(...),
+    db: Session = Depends(get_db)
+):
+    """Cria um lançamento contábil manual"""
+    try:
+        lancamento = crud_plano_contas.criar_lancamento(
+            db=db,
+            data=data,
+            conta_debito_id=debito_conta_id,
+            conta_credito_id=credito_conta_id,
+            valor=valor,
+            historico=historico,
+            automatico=False,
+            editavel=True
+        )
+        return {
+            "id": lancamento.id,
+            "data": lancamento.data.isoformat(),
+            "valor": lancamento.valor,
+            "historico": lancamento.historico,
+            "status": "ok"
+        }
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+@api_router.put("/contabilidade/lancamentos/{lancamento_id}")
+def editar_lancamento_endpoint(
+    lancamento_id: int,
+    data: date_type = Body(...),
+    debito_conta_id: int = Body(...),
+    credito_conta_id: int = Body(...),
+    valor: float = Body(...),
+    historico: str = Body(...),
+    db: Session = Depends(get_db)
+):
+    """Edita um lançamento contábil"""
+    try:
+        lancamento = crud_plano_contas.editar_lancamento(
+            db, lancamento_id, data, debito_conta_id, credito_conta_id, valor, historico
+        )
+        return {"id": lancamento.id, "status": "ok", "message": "Lançamento editado com sucesso"}
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+@api_router.delete("/contabilidade/lancamentos/{lancamento_id}")
+def excluir_lancamento_endpoint(lancamento_id: int, db: Session = Depends(get_db)):
+    """Exclui um lançamento contábil"""
+    try:
+        crud_plano_contas.excluir_lancamento(db, lancamento_id)
+        return {"status": "ok", "message": "Lançamento excluído com sucesso"}
+    except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
 
 
@@ -1407,7 +1940,7 @@ def obter_tempo_medio_por_tipo(db: Session = Depends(get_db)):
 
 
 # Serve frontend static files from the repository root `frontend/` directory
-frontend_build_dir = Path(__file__).resolve().parent.parent / "frontend" / "react-app" / "dist"
+frontend_build_dir = PathLib(__file__).resolve().parent.parent / "frontend" / "react-app" / "dist"
 
 # Mount the 'assets' directory from the build output
 if (frontend_build_dir / "assets").exists():

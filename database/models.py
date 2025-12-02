@@ -336,29 +336,124 @@ class PlanoDeContas(Base):
     __tablename__ = "plano_de_contas"
 
     id = Column(Integer, primary_key=True, index=True)
-    codigo = Column(String(50), unique=True, nullable=False)
+    codigo = Column(String(50), unique=True, nullable=False, index=True)
     descricao = Column(String(255), nullable=False)
-    tipo = Column(String(50), nullable=False) # Ativo, Passivo, PL, Receita, Despesa
+    tipo = Column(String(50), nullable=False)  # Ativo, Passivo, PL, Receita, Despesa
+    natureza = Column(String(20), nullable=False)  # Devedora ou Credora
+    pai_id = Column(Integer, ForeignKey("plano_de_contas.id"), nullable=True)  # Hierarquia
+    nivel = Column(Integer, nullable=False, default=1)  # Nível hierárquico (1, 2, 3...)
+    aceita_lancamento = Column(Boolean, default=True, nullable=False)  # Contas sintéticas não aceitam
+    ativo = Column(Boolean, default=True, nullable=False)  # Conta ativa ou inativa
+    
+    # Relacionamentos
+    pai = relationship("PlanoDeContas", remote_side=[id], backref="filhos")
 
 
 class LancamentoContabil(Base):
     __tablename__ = "lancamentos_contabeis"
 
     id = Column(Integer, primary_key=True, index=True)
-    data = Column(Date, nullable=False, default=datetime.utcnow)
+    data = Column(Date, nullable=False, default=datetime.utcnow, index=True)
     conta_debito_id = Column(Integer, ForeignKey("plano_de_contas.id"), nullable=False)
     conta_credito_id = Column(Integer, ForeignKey("plano_de_contas.id"), nullable=False)
     valor = Column(Float, nullable=False)
     historico = Column(Text)
+    automatico = Column(Boolean, default=True, nullable=False)  # True = gerado automaticamente
+    editavel = Column(Boolean, default=True, nullable=False)  # True = pode ser editado
+    criado_por = Column(Integer, ForeignKey("usuarios.id"), nullable=True)
+    criado_em = Column(DateTime, default=datetime.utcnow)
+    editado_em = Column(DateTime, nullable=True)
 
     # Relacionamentos para rastrear a origem do lançamento
     entrada_id = Column(Integer, ForeignKey("entradas.id"), nullable=True)
     despesa_id = Column(Integer, ForeignKey("despesas.id"), nullable=True)
     
+    # Campos para sistema de provisões
+    tipo_lancamento = Column(String(30), default='efetivo', nullable=False)  # 'efetivo', 'provisao', 'pagamento_pro_labore', 'pagamento_lucro', 'pagamento_imposto'
+    referencia_mes = Column(String(7), nullable=True, index=True)  # YYYY-MM para agrupamento por competência
+    
+    # Controle de pagamento de provisões
+    pago = Column(Boolean, default=False, nullable=False)  # True = provisão já foi paga
+    data_pagamento = Column(Date, nullable=True)  # Data em que o pagamento foi efetivado
+    valor_pago = Column(Float, nullable=True)  # Valor efetivamente pago (pode ser parcial)
+    lancamento_origem_id = Column(Integer, ForeignKey("lancamentos_contabeis.id"), nullable=True)  # Ref. ao lançamento que originou este (para pagamentos parciais)
+    
     entrada = relationship("Entrada", back_populates="lancamentos")
     despesa = relationship("Despesa", back_populates="lancamentos")
     conta_debito = relationship("PlanoDeContas", foreign_keys=[conta_debito_id])
     conta_credito = relationship("PlanoDeContas", foreign_keys=[conta_credito_id])
+    usuario_criador = relationship("Usuario", foreign_keys=[criado_por])
+    lancamento_origem = relationship("LancamentoContabil", remote_side="LancamentoContabil.id", foreign_keys=[lancamento_origem_id])
+
+
+class ProvisaoEntrada(Base):
+    """Tabela para rastrear provisões calculadas por entrada de honorários"""
+    __tablename__ = "provisoes_entradas"
+
+    id = Column(Integer, primary_key=True, index=True)
+    entrada_id = Column(Integer, ForeignKey("entradas.id"), nullable=False, unique=True)
+    mes_referencia = Column(String(7), nullable=False, index=True)  # YYYY-MM
+    data_calculo = Column(DateTime, default=datetime.utcnow, nullable=False)
+    
+    # Base de cálculo
+    receita_12m_base = Column(Float, nullable=False)
+    aliquota_simples = Column(Float, nullable=False)
+    imposto_provisionado = Column(Float, nullable=False)
+    lucro_bruto = Column(Float, nullable=False)
+    
+    # Provisões calculadas
+    pro_labore_previsto = Column(Float, nullable=False)
+    inss_patronal_previsto = Column(Float, nullable=False)
+    inss_pessoal_previsto = Column(Float, nullable=False)
+    fundo_reserva_previsto = Column(Float, nullable=False)
+    lucro_disponivel_total = Column(Float, nullable=False)
+    
+    # Distribuição por sócio (JSON)
+    # Estrutura: [{"socio_id": 1, "nome": "André", "percentual_entrada": 50.0, "lucro_disponivel": 500.0}, ...]
+    distribuicao_socios = Column(JSON, nullable=False)
+    
+    # Relacionamento
+    entrada = relationship("Entrada", backref="provisao")
+
+
+class Ativo(Base):
+    """Tabela para controle de ativos imobilizados (equipamentos, móveis, etc)"""
+    __tablename__ = "ativos"
+
+    id = Column(Integer, primary_key=True, index=True)
+    descricao = Column(String(255), nullable=False)
+    data_aquisicao = Column(Date, nullable=False)
+    valor_aquisicao = Column(Float, nullable=False)
+    vida_util_meses = Column(Integer, nullable=False)  # Vida útil em meses
+    taxa_depreciacao_anual = Column(Float, nullable=False)  # % ao ano (ex: 0.10 = 10%)
+    valor_residual = Column(Float, default=0.0)  # Valor residual ao fim da vida útil
+    depreciacao_acumulada = Column(Float, default=0.0, nullable=False)
+    ativo = Column(Boolean, default=True, nullable=False)  # Ativo em uso ou baixado
+    data_baixa = Column(Date, nullable=True)
+    motivo_baixa = Column(Text, nullable=True)  # Venda, descarte, doação, etc
+    conta_ativo_id = Column(Integer, ForeignKey("plano_de_contas.id"), nullable=False)
+    conta_depreciacao_id = Column(Integer, ForeignKey("plano_de_contas.id"), nullable=False)
+    
+    # Relacionamentos
+    conta_ativo = relationship("PlanoDeContas", foreign_keys=[conta_ativo_id])
+    conta_depreciacao = relationship("PlanoDeContas", foreign_keys=[conta_depreciacao_id])
+    depreciacoes = relationship("DepreciacaoMensal", back_populates="ativo", cascade="all, delete-orphan")
+
+
+class DepreciacaoMensal(Base):
+    """Registro mensal de depreciação de ativos"""
+    __tablename__ = "depreciacoes_mensais"
+
+    id = Column(Integer, primary_key=True, index=True)
+    ativo_id = Column(Integer, ForeignKey("ativos.id"), nullable=False)
+    mes = Column(String(7), nullable=False, index=True)  # YYYY-MM
+    valor_depreciacao = Column(Float, nullable=False)
+    lancamento_id = Column(Integer, ForeignKey("lancamentos_contabeis.id"), nullable=True)
+    
+    # Relacionamentos
+    ativo = relationship("Ativo", back_populates="depreciacoes")
+    lancamento = relationship("LancamentoContabil")
+
 
 class Fundo(Base):
     __tablename__ = "fundos"

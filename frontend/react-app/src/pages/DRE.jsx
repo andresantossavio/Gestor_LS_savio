@@ -137,8 +137,8 @@ const DRE = () => {
                                 <td style={tdStyle}>
                                     {linha.mes}
                                     {!linha.consolidado && (
-                                        <span style={{ marginLeft: '5px', fontSize: '11px', color: '#d97706' }}>
-                                            ⚡ tempo real
+                                        <span style={{ marginLeft: '5px', fontSize: '11px', color: '#6b7280', fontStyle: 'italic' }}>
+                                            (provisório)
                                         </span>
                                     )}
                                 </td>
@@ -187,13 +187,13 @@ const DRE = () => {
             <div style={{ marginTop: 20, padding: 15, backgroundColor: '#f9fafb', borderRadius: 8 }}>
                 <h3 style={{ marginTop: 0 }}>Legenda</h3>
                 <p><span style={{ display: 'inline-block', width: 20, height: 20, backgroundColor: '#f0fdf4', border: '1px solid #ccc', marginRight: 8 }}></span>✅ Mês consolidado (valores salvos no banco)</p>
-                <p><span style={{ display: 'inline-block', width: 20, height: 20, backgroundColor: '#fef9e7', border: '1px solid #ccc', marginRight: 8 }}></span>⚡ Valores calculados em tempo real</p>
+                <p><span style={{ display: 'inline-block', width: 20, height: 20, backgroundColor: '#fef9e7', border: '1px solid #ccc', marginRight: 8 }}></span>Valores provisórios (não consolidados)</p>
                 <p style={{ fontSize: 14, color: '#6b7280', marginTop: 15 }}>
                     <strong>Como funciona:</strong>
                 </p>
                 <ul style={{ fontSize: 14, color: '#6b7280', marginTop: 5 }}>
                     <li>Toda vez que você adiciona uma <strong>entrada</strong> ou <strong>despesa</strong>, os valores da DRE são recalculados automaticamente.</li>
-                    <li>Os meses com valores em <strong>tempo real</strong> são atualizados sempre que você clica em "🔄 Recalcular Valores".</li>
+                    <li>Os meses com valores <strong>provisórios</strong> são atualizados sempre que você clica em "🔄 Recalcular Valores".</li>
                     <li>Clique em <strong>"Consolidar"</strong> para salvar os valores definitivos do mês no banco de dados.</li>
                     <li>Meses consolidados podem ser <strong>recalculados</strong> se houver necessidade de correção.</li>
                 </ul>

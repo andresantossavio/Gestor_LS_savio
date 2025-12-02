@@ -23,3 +23,4 @@ export { default as LancamentosContabeis } from './LancamentosContabeis.jsx';
 export { default as Balanco } from './Balanco.jsx';
 export { default as DMPL } from './DMPL.jsx';
 export { default as DFC } from './DFC.jsx';
+export { default as PagamentosPendentes } from './PagamentosPendentes.jsx';

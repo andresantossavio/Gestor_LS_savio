@@ -1,6 +1,7 @@
 from typing import Optional, Tuple
 from datetime import date
 from sqlalchemy.orm import Session
+from sqlalchemy import func
 from database.models import SimplesFaixa
 
 
@@ -122,3 +123,32 @@ def inicializar_faixas_simples(db: Session, data_vigencia: date) -> None:
     
     db.commit()
     print(f"Faixas do Simples Nacional inicializadas com vigência a partir de {data_vigencia}")
+
+
+def calcular_receita_12_meses(db: Session, data_ref: date) -> float:
+    """
+    Calcula a receita acumulada dos últimos 12 meses a partir da data de referência.
+    
+    Args:
+        db: Sessão do banco de dados
+        data_ref: Data de referência
+    
+    Returns:
+        Receita acumulada dos últimos 12 meses
+    """
+    from database.models import Entrada
+    from dateutil.relativedelta import relativedelta
+    from sqlalchemy import extract, and_
+    
+    # Data início: 12 meses antes da data de referência
+    data_inicio = data_ref - relativedelta(months=12)
+    
+    # Soma todas as entradas entre data_inicio e data_ref
+    total = db.query(func.sum(Entrada.valor)).filter(
+        and_(
+            Entrada.data >= data_inicio,
+            Entrada.data <= data_ref
+        )
+    ).scalar()
+    
+    return total if total else 0.0

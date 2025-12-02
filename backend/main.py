@@ -178,6 +178,42 @@ def criar_entrada(entrada: schemas.EntradaCreate, db: Session = Depends(get_db))
     except Exception as e:
         print(f"⚠️  Erro ao criar lançamento contábil para entrada {nova_entrada.id}: {e}")
     
+    # Gerar pagamentos pendentes automaticamente
+    try:
+        from utils.simples import calcular_receita_12_meses
+        
+        # Calcula receita 12 meses
+        receita_12m = calcular_receita_12_meses(db, nova_entrada.data)
+        
+        # Busca sócios com percentuais
+        socios_entrada = db.query(models.EntradaSocio).filter(
+            models.EntradaSocio.entrada_id == nova_entrada.id
+        ).all()
+        
+        administrador_id = None
+        socios_data = []
+        for se in socios_entrada:
+            socio = db.query(models.Socio).filter(models.Socio.id == se.socio_id).first()
+            if socio:
+                # Identifica o administrador pela função
+                is_admin = socio.funcao and "administrador" in socio.funcao.lower()
+                if is_admin:
+                    administrador_id = socio.id
+                
+                socios_data.append({
+                    "id": socio.id,
+                    "nome": socio.nome,
+                    "percentual": se.percentual,
+                    "funcao": socio.funcao,
+                    "is_admin": is_admin
+                })
+        
+        # NÃO GERAR PENDÊNCIAS AUTOMATICAMENTE POR ENTRADA
+        # Pendências devem ser geradas consolidadas por mês via endpoint dedicado
+        # /api/pagamentos-pendentes/gerar/{mes}/{ano}
+    except Exception as e:
+        print(f"⚠️  Erro ao processar entrada {nova_entrada.id}: {e}")
+    
     return nova_entrada
 
 @api_router.put("/contabilidade/entradas/{entrada_id}", response_model=schemas.Entrada)
@@ -825,13 +861,14 @@ def registrar_pagamento_pro_labore(
     db: Session = Depends(get_db)
 ):
     """
-    Registra pagamento parcial de pró-labore.
+    Registra pagamento (parcial ou total) do pró‑labore do administrador como distribuição de lucros.
     
-    Cria lançamentos:
-    - D: Pró-labore a Pagar (2.1.3.1) / C: Caixa (1.1.1) - 89% (líquido)
-    - D: Pró-labore a Pagar (2.1.3.1) / C: INSS a Recolher (2.1.2.2) - 11% (retenção)
+    Cria lançamentos (tipo 'pagamento_lucro'):
+    - D: Lucros Distribuídos (3.4) / C: Caixa (1.1.1) - 89% (líquido)
+    - D: Lucros Distribuídos (3.4) / C: INSS a Recolher (2.1.2.2) - 11% (retenção)
     """
     from database.crud_provisoes import get_saldo_disponivel_mes
+    from database import models as _models
     
     # Validar saldo disponível
     saldos = get_saldo_disponivel_mes(db, pagamento.mes, pagamento.ano)
@@ -842,12 +879,12 @@ def registrar_pagamento_pro_labore(
             detail=f"Valor solicitado (R$ {pagamento.valor:.2f}) excede saldo disponível (R$ {saldos['pro_labore']['disponivel']:.2f})"
         )
     
-    # Buscar contas
-    conta_pro_labore_passivo = crud_plano_contas.buscar_conta_por_codigo(db, "2.1.3.1")
+    # Buscar contas (migram para fluxo de lucros)
+    conta_lucros_distribuidos = crud_plano_contas.buscar_conta_por_codigo(db, "3.4")
     conta_caixa = crud_plano_contas.buscar_conta_por_codigo(db, "1.1.1")
     conta_inss_passivo = crud_plano_contas.buscar_conta_por_codigo(db, "2.1.2.2")
     
-    if not all([conta_pro_labore_passivo, conta_caixa, conta_inss_passivo]):
+    if not all([conta_lucros_distribuidos, conta_caixa, conta_inss_passivo]):
         raise HTTPException(status_code=500, detail="Contas contábeis não encontradas")
     
     mes_referencia = f"{pagamento.ano}-{str(pagamento.mes).zfill(2)}"
@@ -856,34 +893,38 @@ def registrar_pagamento_pro_labore(
     valor_liquido = pagamento.valor * 0.89  # 89% líquido
     valor_inss_retido = pagamento.valor * 0.11  # 11% INSS pessoal retido
     
-    historico_base = f"Pagamento pró-labore {pagamento.mes:02d}/{pagamento.ano}"
+    # Identificar sócio administrador (para registrar no histórico)
+    socio_admin = db.query(_models.Socio).filter(_models.Socio.funcao.ilike('%admin%')).first()
+    nome_admin = f" - {socio_admin.nome}" if socio_admin else ""
+
+    historico_base = f"Pagamento pró-labore {pagamento.mes:02d}/{pagamento.ano}{nome_admin}"
     if pagamento.observacao:
         historico_base += f" - {pagamento.observacao}"
     
-    # Lançamento 1: Pagamento líquido
+    # Lançamento 1: Pagamento líquido (D 3.4 / C 1.1.1)
     lanc1 = models.LancamentoContabil(
         data=pagamento.data_pagamento,
-        conta_debito_id=conta_pro_labore_passivo.id,
+        conta_debito_id=conta_lucros_distribuidos.id,
         conta_credito_id=conta_caixa.id,
         valor=valor_liquido,
         historico=f"{historico_base} (líquido)",
         automatico=True,
         editavel=False,
-        tipo_lancamento='pagamento_pro_labore',
+        tipo_lancamento='pagamento_lucro',
         referencia_mes=mes_referencia
     )
     db.add(lanc1)
     
-    # Lançamento 2: Retenção INSS 11%
+    # Lançamento 2: Retenção INSS 11% (D 3.4 / C 2.1.2.2)
     lanc2 = models.LancamentoContabil(
         data=pagamento.data_pagamento,
-        conta_debito_id=conta_pro_labore_passivo.id,
+        conta_debito_id=conta_lucros_distribuidos.id,
         conta_credito_id=conta_inss_passivo.id,
         valor=valor_inss_retido,
         historico=f"{historico_base} (INSS 11% retido)",
         automatico=True,
         editavel=False,
-        tipo_lancamento='pagamento_pro_labore',
+        tipo_lancamento='pagamento_lucro',
         referencia_mes=mes_referencia
     )
     db.add(lanc2)
@@ -892,7 +933,7 @@ def registrar_pagamento_pro_labore(
     
     return {
         "status": "success",
-        "message": f"Pagamento de R$ {pagamento.valor:.2f} registrado com sucesso",
+        "message": f"Pagamento (como lucros) de R$ {pagamento.valor:.2f} registrado com sucesso",
         "valor_liquido": valor_liquido,
         "inss_retido": valor_inss_retido,
         "novo_saldo_disponivel": saldos['pro_labore']['disponivel'] - pagamento.valor
@@ -2044,6 +2085,109 @@ def obter_tempo_medio_por_tipo(db: Session = Depends(get_db)):
     """Retorna tempo médio de conclusão por tipo de tarefa."""
     return crud_tarefas.obter_tempo_medio_por_tipo(db)
 
+
+# --- Pagamentos Pendentes (Sistema Simplificado) ---
+from database import crud_pagamentos_pendentes
+
+@api_router.get("/pagamentos-pendentes", response_model=List[schemas.PagamentoPendente])
+def listar_pagamentos_pendentes(
+    mes: Optional[int] = None,
+    ano: Optional[int] = None,
+    tipo: Optional[str] = None,
+    socio_id: Optional[int] = None,
+    apenas_pendentes: bool = False,
+    db: Session = Depends(get_db)
+):
+    """Lista pagamentos pendentes com filtros opcionais"""
+    return crud_pagamentos_pendentes.listar_pagamentos_pendentes(
+        db, mes=mes, ano=ano, tipo=tipo, socio_id=socio_id, apenas_pendentes=apenas_pendentes
+    )
+
+
+@api_router.get("/pagamentos-pendentes/{pagamento_id}", response_model=schemas.PagamentoPendente)
+def obter_pagamento_pendente(pagamento_id: int, db: Session = Depends(get_db)):
+    """Obtém um pagamento pendente por ID"""
+    pagamento = crud_pagamentos_pendentes.obter_pagamento_pendente(db, pagamento_id)
+    if not pagamento:
+        raise HTTPException(status_code=404, detail="Pagamento não encontrado")
+    return pagamento
+
+
+@api_router.post("/pagamentos-pendentes/{pagamento_id}/confirmar", response_model=schemas.PagamentoPendente)
+def confirmar_pagamento(
+    pagamento_id: int, 
+    data_pagamento: schemas.ConfirmarPagamento,
+    db: Session = Depends(get_db)
+):
+    """Confirma um pagamento pendente"""
+    try:
+        return crud_pagamentos_pendentes.confirmar_pagamento(
+            db, pagamento_id, data_pagamento.data_confirmacao
+        )
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+
+
+@api_router.post("/pagamentos-pendentes/{pagamento_id}/desconfirmar", response_model=schemas.PagamentoPendente)
+def desconfirmar_pagamento(pagamento_id: int, db: Session = Depends(get_db)):
+    """Remove a confirmação de um pagamento"""
+    try:
+        return crud_pagamentos_pendentes.desconfirmar_pagamento(db, pagamento_id)
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+
+
+@api_router.delete("/pagamentos-pendentes/{pagamento_id}")
+def excluir_pagamento_pendente(pagamento_id: int, db: Session = Depends(get_db)):
+    """Exclui um pagamento pendente"""
+    sucesso = crud_pagamentos_pendentes.excluir_pagamento_pendente(db, pagamento_id)
+    if not sucesso:
+        raise HTTPException(status_code=404, detail="Pagamento não encontrado")
+    return {"status": "ok"}
+
+
+@api_router.get("/pagamentos-pendentes/resumo/{mes}/{ano}")
+def obter_resumo_mes(mes: int, ano: int, db: Session = Depends(get_db)):
+    """Retorna resumo financeiro do mês"""
+    return crud_pagamentos_pendentes.obter_resumo_mes(db, mes, ano)
+
+
+@api_router.get("/pagamentos-pendentes/socio/{socio_id}")
+def obter_pendencias_socio(
+    socio_id: int, 
+    apenas_pendentes: bool = True, 
+    db: Session = Depends(get_db)
+):
+    """Retorna todas as pendências de um sócio"""
+    return crud_pagamentos_pendentes.obter_pendencias_por_socio(db, socio_id, apenas_pendentes)
+
+
+@api_router.post("/pagamentos-pendentes/gerar/{mes}/{ano}")
+def gerar_pendencias_mes_endpoint(
+    mes: int = Path(..., ge=1, le=12),
+    ano: int = Path(..., ge=2000),
+    db: Session = Depends(get_db)
+):
+    """
+    Gera pagamentos pendentes CONSOLIDADOS para um mês específico.
+    
+    Um único boleto de SIMPLES por mês, um único de INSS, etc.
+    Baseado na DRE consolidada do mês.
+    
+    Este endpoint deve ser chamado após lançar todas as entradas do mês
+    e consolidar a DRE.
+    """
+    try:
+        pendencias = crud_pagamentos_pendentes.gerar_pendencias_mes(db, mes, ano)
+        return {
+            "status": "success",
+            "mes": mes,
+            "ano": ano,
+            "total_pendencias": len(pendencias),
+            "pendencias": pendencias
+        }
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
 
 
 # Serve frontend static files from the repository root `frontend/` directory

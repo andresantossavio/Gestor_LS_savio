@@ -272,6 +272,7 @@ class Socio(Base):
     despesas = relationship("DespesaSocio", back_populates="socio")
     entradas = relationship("EntradaSocio", back_populates="socio")
     usuario = relationship("Usuario", foreign_keys=[usuario_id])
+    pagamentos_pendentes = relationship("PagamentoPendente", back_populates="socio")
 
 class ConfiguracaoContabil(Base):
     __tablename__ = "configuracao_contabil"
@@ -494,3 +495,37 @@ class DREMensal(Base):
     reserva_10p = Column(Float, nullable=False, default=0.0)  # 10% do lucro líquido
     consolidado = Column(Boolean, default=False, nullable=False)  # Flag de consolidação
     data_consolidacao = Column(DateTime, nullable=True)  # Timestamp da consolidação
+
+
+class PagamentoPendente(Base):
+    """Modelo simplificado de pagamentos pendentes - substitui a complexidade do sistema contábil"""
+    __tablename__ = "pagamentos_pendentes"
+    __table_args__ = (
+        Index('idx_pendente_tipo', 'tipo'),
+        Index('idx_pendente_mes_ano', 'mes_ref', 'ano_ref'),
+        Index('idx_pendente_confirmado', 'confirmado'),
+        Index('idx_pendente_socio', 'socio_id'),
+    )
+
+    id = Column(Integer, primary_key=True, index=True)
+    tipo = Column(String(50), nullable=False)  # 'INSS', 'SIMPLES', 'LUCRO_SOCIO', 'FUNDO_RESERVA', 'DESPESA'
+    descricao = Column(String(255), nullable=False)  # Ex: "INSS sobre honorários de Jun/2024"
+    valor = Column(Float, nullable=False)
+    mes_ref = Column(Integer, nullable=False)  # Mês de referência (1-12)
+    ano_ref = Column(Integer, nullable=False)  # Ano de referência
+    
+    # Confirmação
+    confirmado = Column(Boolean, default=False, nullable=False)
+    data_confirmacao = Column(Date, nullable=True)  # Data em que foi marcado como pago
+    
+    # Relacionamentos opcionais
+    socio_id = Column(Integer, ForeignKey("socios.id"), nullable=True)  # Para pagamentos de lucro
+    entrada_id = Column(Integer, ForeignKey("entradas.id"), nullable=True)  # Entrada que gerou o pagamento
+    
+    # Metadata
+    criado_em = Column(DateTime, default=datetime.utcnow, nullable=False)
+    atualizado_em = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
+    
+    # Relationships
+    socio = relationship("Socio", back_populates="pagamentos_pendentes")
+    entrada = relationship("Entrada")

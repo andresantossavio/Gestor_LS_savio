@@ -260,7 +260,7 @@ def get_saldo_disponivel_mes(db: Session, mes: int, ano: int, tipo: str = 'all')
             lucros_por_socio[socio_id]['previsto'] += dist['lucro_disponivel']
     
     # Calcular pagamentos efetivos do mês
-    # Pró-labore: débitos na conta 2.1.3.1 (Pró-labore a Pagar) para 1.1.1 (Caixa)
+    # Pró-labore (LEGADO): débitos na conta 2.1.3.1 (Pró-labore a Pagar) para 1.1.1 (Caixa)
     conta_pro_labore = db.query(models.PlanoDeContas).filter(
         models.PlanoDeContas.codigo == "2.1.3.1"
     ).first()
@@ -272,6 +272,19 @@ def get_saldo_disponivel_mes(db: Session, mes: int, ano: int, tipo: str = 'all')
             models.LancamentoContabil.tipo_lancamento == 'pagamento_pro_labore',
             models.LancamentoContabil.conta_debito_id == conta_pro_labore.id
         ).scalar() or 0.0
+    
+    # Pró-labore (ATUAL): pagamentos via 3.4 como 'pagamento_lucro' (líquido + INSS 11% retido)
+    conta_lucros_para_pro_labore = db.query(models.PlanoDeContas).filter(
+        models.PlanoDeContas.codigo == "3.4"
+    ).first()
+    if conta_lucros_para_pro_labore:
+        pro_labore_via_lucros = db.query(func.sum(models.LancamentoContabil.valor)).filter(
+            models.LancamentoContabil.referencia_mes == mes_str,
+            models.LancamentoContabil.tipo_lancamento == 'pagamento_lucro',
+            models.LancamentoContabil.conta_debito_id == conta_lucros_para_pro_labore.id,
+            models.LancamentoContabil.historico.ilike('%Pagamento pró-labore%')
+        ).scalar() or 0.0
+        pro_labore_pago += pro_labore_via_lucros
     
     # INSS: débitos na conta 2.1.2.2 (INSS a Recolher) para 1.1.1 (Caixa)
     conta_inss = db.query(models.PlanoDeContas).filter(

@@ -36,15 +36,18 @@ def inicializar_plano_contas(db: Session):
         {"codigo": "2.1.2.2", "descricao": "INSS a Recolher", "tipo": "Passivo", "natureza": "Credora", "nivel": 4, "aceita_lancamento": True, "pai_codigo": "2.1.2"},
         {"codigo": "2.1.3", "descricao": "Obrigações Trabalhistas", "tipo": "Passivo", "natureza": "Credora", "nivel": 3, "aceita_lancamento": False, "pai_codigo": "2.1"},
         {"codigo": "2.1.3.1", "descricao": "Pró-labore a Pagar", "tipo": "Passivo", "natureza": "Credora", "nivel": 4, "aceita_lancamento": True, "pai_codigo": "2.1.3"},
+        {"codigo": "2.1.4", "descricao": "Simples a Pagar", "tipo": "Passivo", "natureza": "Credora", "nivel": 3, "aceita_lancamento": True, "pai_codigo": "2.1"},
+        {"codigo": "2.1.5", "descricao": "INSS a Pagar", "tipo": "Passivo", "natureza": "Credora", "nivel": 3, "aceita_lancamento": True, "pai_codigo": "2.1"},
+        {"codigo": "2.1.6", "descricao": "Lucros a Pagar", "tipo": "Passivo", "natureza": "Credora", "nivel": 3, "aceita_lancamento": True, "pai_codigo": "2.1"},
         
         # 3. PATRIMÔNIO LÍQUIDO
         {"codigo": "3", "descricao": "PATRIMÔNIO LÍQUIDO", "tipo": "PL", "natureza": "Credora", "nivel": 1, "aceita_lancamento": False},
         {"codigo": "3.1", "descricao": "Capital Social", "tipo": "PL", "natureza": "Credora", "nivel": 2, "aceita_lancamento": True, "pai_codigo": "3"},
         {"codigo": "3.2", "descricao": "Reservas de Lucros", "tipo": "PL", "natureza": "Credora", "nivel": 2, "aceita_lancamento": False, "pai_codigo": "3"},
-        {"codigo": "3.2.1", "descricao": "Reserva Legal (10%)", "tipo": "PL", "natureza": "Credora", "nivel": 3, "aceita_lancamento": True, "pai_codigo": "3.2"},
-        {"codigo": "3.2.2", "descricao": "Fundo de Reserva", "tipo": "PL", "natureza": "Credora", "nivel": 3, "aceita_lancamento": True, "pai_codigo": "3.2"},
+        {"codigo": "3.2.1", "descricao": "Reserva de Lucros (Fundo Reserva)", "tipo": "PL", "natureza": "Credora", "nivel": 3, "aceita_lancamento": True, "pai_codigo": "3.2"},
         {"codigo": "3.3", "descricao": "Lucros Acumulados", "tipo": "PL", "natureza": "Credora", "nivel": 2, "aceita_lancamento": True, "pai_codigo": "3"},
-        {"codigo": "3.4", "descricao": "Lucros Distribuídos (Sócios)", "tipo": "PL", "natureza": "Devedora", "nivel": 2, "aceita_lancamento": True, "pai_codigo": "3"},
+        {"codigo": "3.4", "descricao": "Lucros Distribuídos", "tipo": "PL", "natureza": "Devedora", "nivel": 2, "aceita_lancamento": False, "pai_codigo": "3"},
+        {"codigo": "3.4.1", "descricao": "Lucros Distribuídos (Sócios)", "tipo": "PL", "natureza": "Devedora", "nivel": 3, "aceita_lancamento": True, "pai_codigo": "3.4"},
         
         # 4. RECEITAS
         {"codigo": "4", "descricao": "RECEITAS", "tipo": "Receita", "natureza": "Credora", "nivel": 1, "aceita_lancamento": False},

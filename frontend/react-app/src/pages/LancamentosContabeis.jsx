@@ -12,13 +12,10 @@ export default function LancamentosContabeis() {
   const [filtroConta, setFiltroConta] = useState('');
   const [filtroTipo, setFiltroTipo] = useState('');
   const [filtroApenasPendentes, setFiltroApenasPendentes] = useState(false);
-  const [showPagamentoModal, setShowPagamentoModal] = useState(false);
-  const [lancamentoPagamento, setLancamentoPagamento] = useState(null);
-  const [pagamentoData, setPagamentoData] = useState({
-    data_pagamento: new Date().toISOString().split('T')[0],
-    valor_pago: '',
-    observacao: ''
-  });
+  // Fluxo antigo de modal de pagamento removido em favor de 1-clique
+  const [editandoDataPagamento, setEditandoDataPagamento] = useState(null);
+  const [novaDataPagamento, setNovaDataPagamento] = useState('');
+  const [excluindoLancamento, setExcluindoLancamento] = useState(null);
   const [formData, setFormData] = useState({
     data: new Date().toISOString().split('T')[0],
     historico: '',
@@ -145,10 +142,6 @@ export default function LancamentosContabeis() {
   };
 
   const handleEdit = (lancamento) => {
-    if (!lancamento.editavel) {
-      alert('Este lançamento foi gerado automaticamente e não pode ser editado.');
-      return;
-    }
     setEditingLancamento(lancamento);
     setFormData({
       data: lancamento.data,
@@ -160,24 +153,56 @@ export default function LancamentosContabeis() {
     setShowForm(true);
   };
 
-  const handleDelete = async (id, editavel) => {
-    if (!editavel) {
-      alert('Este lançamento foi gerado automaticamente e não pode ser excluído.');
-      return;
-    }
-    
-    if (!confirm('Tem certeza que deseja excluir este lançamento?')) {
-      return;
-    }
+  const handleDelete = async (id) => {
+    setExcluindoLancamento(id);
+  };
 
+  const confirmarExclusao = async () => {
     try {
-      await fetch(`/api/contabilidade/lancamentos/${id}`, {
+      const response = await fetch(`/api/contabilidade/lancamentos/${excluindoLancamento}`, {
         method: 'DELETE'
       });
+      if (!response.ok) {
+        const error = await response.json().catch(() => ({}));
+        throw new Error(error.detail || 'Erro ao excluir lançamento');
+      }
+      alert('Lançamento excluído com sucesso!');
+      setExcluindoLancamento(null);
       carregarDados();
     } catch (error) {
       console.error('Erro ao excluir lançamento:', error);
-      alert('Erro ao excluir lançamento');
+      alert(`Erro ao excluir: ${error.message}`);
+    }
+  };
+
+  const handleEditarDataPagamento = (lancamento) => {
+    setEditandoDataPagamento(lancamento);
+    setNovaDataPagamento(lancamento.data_pagamento || new Date().toISOString().split('T')[0]);
+  };
+
+  const salvarDataPagamento = async () => {
+    try {
+      const response = await fetch(`/api/contabilidade/lancamentos/${editandoDataPagamento.id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          data: novaDataPagamento,
+          debito_conta_id: editandoDataPagamento.debito_conta_id,
+          credito_conta_id: editandoDataPagamento.credito_conta_id,
+          valor: editandoDataPagamento.valor,
+          historico: editandoDataPagamento.historico
+        })
+      });
+      if (!response.ok) {
+        const error = await response.json().catch(() => ({}));
+        throw new Error(error.detail || 'Erro ao atualizar data');
+      }
+      alert('Data de pagamento atualizada com sucesso!');
+      setEditandoDataPagamento(null);
+      carregarDados();
+    } catch (error) {
+      console.error('Erro ao atualizar data:', error);
+      alert(`Erro: ${error.message}`);
     }
   };
 
@@ -231,45 +256,34 @@ export default function LancamentosContabeis() {
     return <span className="badge bg-secondary">-</span>;
   };
 
-  const handleMarcarPagamento = (lancamento) => {
-    setLancamentoPagamento(lancamento);
-    setPagamentoData({
-      data_pagamento: new Date().toISOString().split('T')[0],
-      valor_pago: lancamento.saldo_pendente || lancamento.valor,
-      observacao: ''
-    });
-    setShowPagamentoModal(true);
-  };
-
-  const handleSubmitPagamento = async (e) => {
-    e.preventDefault();
-    
+  const handleMarcarPagamento = async (lancamento) => {
+    // Um clique: confirmar andamento contábil com data de hoje e valor total
+    const hoje = new Date().toISOString().split('T')[0];
     try {
-      const response = await fetch(`/api/contabilidade/lancamentos/${lancamentoPagamento.id}/marcar-pagamento`, {
+      const response = await fetch(`/api/contabilidade/lancamentos/${lancamento.id}/marcar-pagamento`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          data_pagamento: pagamentoData.data_pagamento,
-          valor_pago: parseFloat(pagamentoData.valor_pago) || null,
-          observacao: pagamentoData.observacao || null
+          data_pagamento: hoje,
+          valor_pago: null,
+          observacao: 'Confirmação rápida (1 clique)'
         })
       });
-
       if (!response.ok) {
-        const error = await response.json();
-        throw new Error(error.detail || 'Erro ao registrar pagamento');
+        const error = await response.json().catch(() => ({}));
+        throw new Error(error.detail || 'Erro ao confirmar andamento');
       }
-
       const result = await response.json();
-      alert(result.message);
-      setShowPagamentoModal(false);
-      setLancamentoPagamento(null);
+      // Feedback simples e atualização da lista
+      alert(result.message || 'Andamento confirmado');
       carregarDados();
-    } catch (error) {
-      console.error('Erro ao marcar pagamento:', error);
-      alert(`Erro: ${error.message}`);
+    } catch (err) {
+      console.error('Erro ao confirmar andamento:', err);
+      alert(`Erro: ${err.message}`);
     }
   };
+
+  // handleSubmitPagamento removido
 
   const totalDebito = lancamentos.reduce((sum, l) => sum + l.valor, 0);
   const totalCredito = lancamentos.reduce((sum, l) => sum + l.valor, 0);
@@ -573,36 +587,40 @@ export default function LancamentosContabeis() {
                         )}
                       </td>
                       <td className="text-center">
-                        {lancamento.tipo_lancamento === 'provisao' && !lancamento.pago && (
+                        <div className="btn-group" role="group">
+                          {lancamento.tipo_lancamento === 'provisao' && !lancamento.pago && (
+                            <button
+                              className="btn btn-sm btn-success"
+                              onClick={() => handleMarcarPagamento(lancamento)}
+                              title="Confirmar pagamento"
+                            >
+                              ✓
+                            </button>
+                          )}
+                          {lancamento.pago && lancamento.data_pagamento && (
+                            <button
+                              className="btn btn-sm btn-info"
+                              onClick={() => handleEditarDataPagamento(lancamento)}
+                              title="Editar data"
+                            >
+                              📅
+                            </button>
+                          )}
                           <button
-                            className="btn btn-sm btn-success mb-1"
-                            onClick={() => handleMarcarPagamento(lancamento)}
-                            title="Marcar Pagamento"
+                            className="btn btn-sm btn-warning"
+                            onClick={() => handleEdit(lancamento)}
+                            title="Editar"
                           >
-                            💰
+                            ✏️
                           </button>
-                        )}
-                        {lancamento.editavel && (
-                          <>
-                            <button
-                              className="btn btn-sm btn-warning me-1"
-                              onClick={() => handleEdit(lancamento)}
-                              title="Editar"
-                            >
-                              ✏️
-                            </button>
-                            <button
-                              className="btn btn-sm btn-danger"
-                              onClick={() => handleDelete(lancamento.id, lancamento.editavel)}
-                              title="Excluir"
-                            >
-                              🗑️
-                            </button>
-                          </>
-                        )}
-                        {!lancamento.editavel && lancamento.tipo_lancamento !== 'provisao' && (
-                          <span className="text-muted" title="Lançamento automático não pode ser editado">🔒</span>
-                        )}
+                          <button
+                            className="btn btn-sm btn-danger"
+                            onClick={() => handleDelete(lancamento.id)}
+                            title="Excluir"
+                          >
+                            🗑️
+                          </button>
+                        </div>
                       </td>
                     </tr>
                   ))
@@ -620,102 +638,54 @@ export default function LancamentosContabeis() {
         </div>
       </div>
 
-      {/* Modal de Pagamento */}
-      {showPagamentoModal && lancamentoPagamento && (
+      {/* Modal de edição de data de pagamento */}
+      {editandoDataPagamento && (
         <div className="modal show d-block" style={{backgroundColor: 'rgba(0,0,0,0.5)'}}>
           <div className="modal-dialog">
             <div className="modal-content">
               <div className="modal-header">
-                <h5 className="modal-title">Marcar Pagamento</h5>
-                <button
-                  type="button"
-                  className="btn-close"
-                  onClick={() => {
-                    setShowPagamentoModal(false);
-                    setLancamentoPagamento(null);
-                  }}
-                ></button>
+                <h5 className="modal-title">Editar Data de Pagamento</h5>
+                <button type="button" className="btn-close" onClick={() => setEditandoDataPagamento(null)}></button>
               </div>
-              <form onSubmit={handleSubmitPagamento}>
-                <div className="modal-body">
-                  <div className="alert alert-info">
-                    <strong>Lançamento #{lancamentoPagamento.id}</strong><br/>
-                    {lancamentoPagamento.historico}<br/>
-                    <strong>Valor Total:</strong> {formatarValor(lancamentoPagamento.valor)}<br/>
-                    {lancamentoPagamento.saldo_pendente && (
-                      <>
-                        <strong>Saldo Pendente:</strong> {formatarValor(lancamentoPagamento.saldo_pendente)}
-                      </>
-                    )}
-                  </div>
-
-                  <div className="mb-3">
-                    <label className="form-label">Data do Pagamento *</label>
-                    <input
-                      type="date"
-                      className="form-control"
-                      value={pagamentoData.data_pagamento}
-                      onChange={(e) => setPagamentoData({...pagamentoData, data_pagamento: e.target.value})}
-                      required
-                    />
-                  </div>
-
-                  <div className="mb-3">
-                    <label className="form-label">Valor Pago</label>
-                    <input
-                      type="number"
-                      step="0.01"
-                      min="0.01"
-                      className="form-control"
-                      value={pagamentoData.valor_pago}
-                      onChange={(e) => setPagamentoData({...pagamentoData, valor_pago: e.target.value})}
-                      placeholder={`Deixe em branco para pagar tudo (${formatarValor(lancamentoPagamento.saldo_pendente || lancamentoPagamento.valor)})`}
-                    />
-                    <small className="text-muted d-block mb-1">
-                      Se deixar em branco ou informar valor igual ao saldo, será pagamento total. 
-                      Caso contrário, será pagamento parcial.
-                    </small>
-                    <small className="text-info">
-                      💡 O sistema aceita diferenças de até R$ 0,05 para compensar arredondamentos de DARF/Boletos.
-                    </small>
-                  </div>
-
-                  <div className="mb-3">
-                    <label className="form-label">Observação</label>
-                    <textarea
-                      className="form-control"
-                      rows="3"
-                      value={pagamentoData.observacao}
-                      onChange={(e) => setPagamentoData({...pagamentoData, observacao: e.target.value})}
-                      placeholder="Informações adicionais sobre o pagamento (opcional)"
-                    ></textarea>
-                  </div>
-
-                  {lancamentoPagamento.tipo_lancamento === 'provisao' && 
-                   lancamentoPagamento.historico.toLowerCase().includes('pró-labore') && (
-                    <div className="alert alert-warning">
-                      <strong>⚠️ Atenção:</strong> Pagamento de pró-labore será dividido automaticamente:<br/>
-                      • 89% para o beneficiário<br/>
-                      • 11% para retenção de INSS
-                    </div>
-                  )}
+              <div className="modal-body">
+                <p><strong>Lançamento:</strong> {editandoDataPagamento.historico}</p>
+                <p><strong>Valor:</strong> {formatarValor(editandoDataPagamento.valor)}</p>
+                <div className="mb-3">
+                  <label className="form-label">Nova Data de Pagamento</label>
+                  <input
+                    type="date"
+                    className="form-control"
+                    value={novaDataPagamento}
+                    onChange={(e) => setNovaDataPagamento(e.target.value)}
+                  />
                 </div>
-                <div className="modal-footer">
-                  <button
-                    type="button"
-                    className="btn btn-secondary"
-                    onClick={() => {
-                      setShowPagamentoModal(false);
-                      setLancamentoPagamento(null);
-                    }}
-                  >
-                    Cancelar
-                  </button>
-                  <button type="submit" className="btn btn-success">
-                    Confirmar Pagamento
-                  </button>
-                </div>
-              </form>
+              </div>
+              <div className="modal-footer">
+                <button type="button" className="btn btn-secondary" onClick={() => setEditandoDataPagamento(null)}>Cancelar</button>
+                <button type="button" className="btn btn-primary" onClick={salvarDataPagamento}>Salvar</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal de confirmação de exclusão */}
+      {excluindoLancamento && (
+        <div className="modal show d-block" style={{backgroundColor: 'rgba(0,0,0,0.5)'}}>
+          <div className="modal-dialog">
+            <div className="modal-content">
+              <div className="modal-header">
+                <h5 className="modal-title">Confirmar Exclusão</h5>
+                <button type="button" className="btn-close" onClick={() => setExcluindoLancamento(null)}></button>
+              </div>
+              <div className="modal-body">
+                <p>Tem certeza que deseja excluir este lançamento?</p>
+                <p className="text-danger"><strong>Esta ação não pode ser desfeita!</strong></p>
+              </div>
+              <div className="modal-footer">
+                <button type="button" className="btn btn-secondary" onClick={() => setExcluindoLancamento(null)}>Cancelar</button>
+                <button type="button" className="btn btn-danger" onClick={confirmarExclusao}>Excluir</button>
+              </div>
             </div>
           </div>
         </div>

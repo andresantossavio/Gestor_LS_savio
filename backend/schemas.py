@@ -582,3 +582,31 @@ class ProvisaoEntradaDetalhada(BaseModel):
     inss_total_previsto: float
     fundo_reserva_previsto: float
     distribuicao_socios: List[dict]
+
+
+# ==================== SCHEMAS DE PAGAMENTOS PENDENTES (SISTEMA SIMPLIFICADO) ====================
+
+class PagamentoPendenteBase(BaseModel):
+    tipo: str
+    descricao: str
+    valor: float
+    mes_ref: int
+    ano_ref: int
+    socio_id: Optional[int] = None
+    entrada_id: Optional[int] = None
+
+class PagamentoPendenteCreate(PagamentoPendenteBase):
+    pass
+
+class PagamentoPendente(PagamentoPendenteBase):
+    id: int
+    confirmado: bool
+    data_confirmacao: Optional[date] = None
+    criado_em: datetime
+    atualizado_em: datetime
+
+    class Config:
+        from_attributes = True
+
+class ConfirmarPagamento(BaseModel):
+    data_confirmacao: date

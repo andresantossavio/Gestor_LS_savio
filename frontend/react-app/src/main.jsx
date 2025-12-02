@@ -28,6 +28,7 @@ import LancamentosContabeis from './pages/LancamentosContabeis'
 import Balanco from './pages/Balanco'
 import DMPL from './pages/DMPL'
 import DFC from './pages/DFC'
+import PagamentosPendentes from './pages/PagamentosPendentes'
 import Sidebar from './components/Sidebar'
 
 import './styles.css';
@@ -70,6 +71,7 @@ function App() {
             <Route path="/contabilidade/balanco" element={<Balanco />} />
             <Route path="/contabilidade/dmpl" element={<DMPL />} />
             <Route path="/contabilidade/dfc" element={<DFC />} />
+            <Route path="/contabilidade/pagamentos-pendentes" element={<PagamentosPendentes />} />
             <Route path="/contabilidade/socios" element={<SocioPage />} />
             <Route path="/contabilidade/dre" element={<DRE />} />
             <Route path="/contabilidade/pro-labore" element={<ProLabore />} />

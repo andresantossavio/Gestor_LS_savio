@@ -178,14 +178,13 @@ def editar_lancamento(
     valor: Optional[float] = None,
     historico: Optional[str] = None
 ) -> models.LancamentoContabil:
-    """Edita um lançamento contábil existente"""
+    """Edita um lançamento contábil existente - permite edição de QUALQUER lançamento"""
     
     lancamento = db.query(models.LancamentoContabil).filter(models.LancamentoContabil.id == lancamento_id).first()
     if not lancamento:
         raise ValueError("Lançamento não encontrado")
     
-    if not lancamento.editavel:
-        raise ValueError("Este lançamento não pode ser editado")
+    # Removida restrição: permite editar mesmo lançamentos automáticos
     
     if data:
         lancamento.data = data
@@ -207,7 +206,7 @@ def editar_lancamento(
         lancamento.historico = historico
     
     lancamento.editado_em = datetime.utcnow()
-    lancamento.automatico = False  # Marca como editado manualmente
+    # Mantém histórico de que foi editado, mas não força editavel=True
     
     db.commit()
     db.refresh(lancamento)
@@ -215,13 +214,12 @@ def editar_lancamento(
 
 
 def excluir_lancamento(db: Session, lancamento_id: int):
-    """Exclui um lançamento contábil"""
+    """Exclui um lançamento contábil - permite exclusão de QUALQUER lançamento"""
     lancamento = db.query(models.LancamentoContabil).filter(models.LancamentoContabil.id == lancamento_id).first()
     if not lancamento:
         raise ValueError("Lançamento não encontrado")
     
-    if not lancamento.editavel:
-        raise ValueError("Este lançamento não pode ser excluído")
+    # Removida restrição: permite excluir mesmo lançamentos automáticos
     
     db.delete(lancamento)
     db.commit()
@@ -302,7 +300,10 @@ def marcar_pagamento_lancamento(
         conta_credito = lancamento.conta_credito
         
         if conta_credito.codigo == "2.1.3.1":  # Pró-labore a Pagar
-            tipo_pagamento = 'pagamento_pro_labore'
+            # Guard: pró-labore desativado para evitar duplicidades com fluxo de lucros (3.4)
+            raise ValueError(
+                "Pagamento de pró-labore desativado. Registre o saque como 'pagamento_lucro' (D 3.4 / C 1.1.1)."
+            )
         elif conta_credito.codigo in ["2.1.2.1", "2.1.2.2"]:  # Impostos a Recolher
             tipo_pagamento = 'pagamento_imposto'
         elif conta_credito.codigo == "3.2.2":  # Fundo Reserva (não gera pagamento, só ajuste)
@@ -542,18 +543,14 @@ def registrar_fechamento_resultado(
 
 def lancar_entrada_honorarios(db: Session, entrada_id: int) -> List[models.LancamentoContabil]:
     """
-    Cria lançamentos automáticos para entrada de honorários com sistema de provisões.
+    Cria apenas o lançamento de receita efetiva para uma entrada de honorários.
     
-    Lançamentos criados:
-    L1: D: Caixa (1.1.1) / C: Receita (4.1.1) - Receita efetiva
-    L2: D: Simples (5.3.1) / C: Simples a Recolher (2.1.2.1) - Provisão imposto
-    L3: D: Pró-labore (5.1.1) / C: Pró-labore a Pagar (2.1.3.1) - Provisão
-    L4: D: INSS Patronal (5.1.3) / C: INSS a Recolher (2.1.2.2) - Provisão
-    L5: D: Lucros Acumulados (3.3) / C: Fundo Reserva (3.2.2) - Provisão 10%
-    L6-N: D: Lucros Acumulados (3.3) / C: Lucros Distribuídos (3.4) - Por sócio
+    As provisões (Simples, Pró-labore, INSS, Fundo Reserva, Lucros) são criadas
+    apenas na consolidação mensal da DRE, não individualmente por entrada.
+    
+    Lançamento criado:
+    L1: D: Caixa (1.1.1) / C: Receita (4.1.1) - Valor da entrada (efetivo)
     """
-    from .crud_provisoes import calcular_e_provisionar_entrada
-    
     entrada = db.query(models.Entrada).filter(models.Entrada.id == entrada_id).first()
     if not entrada:
         raise ValueError("Entrada não encontrada")
@@ -566,37 +563,22 @@ def lancar_entrada_honorarios(db: Session, entrada_id: int) -> List[models.Lanca
     if lancamentos_existentes:
         return lancamentos_existentes
     
-    # Calcular provisões
-    provisao = calcular_e_provisionar_entrada(db, entrada_id)
     mes_referencia = entrada.data.strftime("%Y-%m")
     
     # Buscar contas necessárias
-    contas = {
-        'caixa': buscar_conta_por_codigo(db, "1.1.1"),
-        'receita': buscar_conta_por_codigo(db, "4.1.1"),
-        'simples_despesa': buscar_conta_por_codigo(db, "5.3.1"),
-        'simples_passivo': buscar_conta_por_codigo(db, "2.1.2.1"),
-        'pro_labore_despesa': buscar_conta_por_codigo(db, "5.1.1"),
-        'pro_labore_passivo': buscar_conta_por_codigo(db, "2.1.3.1"),
-        'inss_despesa': buscar_conta_por_codigo(db, "5.1.3"),
-        'inss_passivo': buscar_conta_por_codigo(db, "2.1.2.2"),
-        'lucros_acumulados': buscar_conta_por_codigo(db, "3.3"),
-        'fundo_reserva': buscar_conta_por_codigo(db, "3.2.2"),
-        'lucros_distribuidos': buscar_conta_por_codigo(db, "3.4"),
-    }
+    conta_caixa = buscar_conta_por_codigo(db, "1.1.1")
+    conta_receita = buscar_conta_por_codigo(db, "4.1.1")
     
-    # Verificar se todas as contas existem
-    for nome, conta in contas.items():
-        if not conta:
-            raise ValueError(f"Conta {nome} não encontrada no plano de contas")
+    if not conta_caixa or not conta_receita:
+        raise ValueError("Contas de Caixa ou Receita não encontradas no plano de contas")
     
     lancamentos = []
     
     # L1: Receita efetiva (entrada de caixa)
     lanc1 = models.LancamentoContabil(
         data=entrada.data,
-        conta_debito_id=contas['caixa'].id,
-        conta_credito_id=contas['receita'].id,
+        conta_debito_id=conta_caixa.id,
+        conta_credito_id=conta_receita.id,
         valor=entrada.valor,
         historico=f"Recebimento de honorários - {entrada.cliente}",
         automatico=True,
@@ -607,92 +589,6 @@ def lancar_entrada_honorarios(db: Session, entrada_id: int) -> List[models.Lanca
     )
     db.add(lanc1)
     lancamentos.append(lanc1)
-    
-    # L2: Provisão Simples Nacional
-    if provisao['imposto_provisionado'] > 0:
-        lanc2 = models.LancamentoContabil(
-            data=entrada.data,
-            conta_debito_id=contas['simples_despesa'].id,
-            conta_credito_id=contas['simples_passivo'].id,
-            valor=provisao['imposto_provisionado'],
-            historico=f"Provisão Simples Nacional - {entrada.cliente}",
-            automatico=True,
-            editavel=False,
-            entrada_id=entrada_id,
-            tipo_lancamento='provisao',
-            referencia_mes=mes_referencia
-        )
-        db.add(lanc2)
-        lancamentos.append(lanc2)
-    
-    # L3: Provisão Pró-labore
-    if provisao['pro_labore_previsto'] > 0:
-        lanc3 = models.LancamentoContabil(
-            data=entrada.data,
-            conta_debito_id=contas['pro_labore_despesa'].id,
-            conta_credito_id=contas['pro_labore_passivo'].id,
-            valor=provisao['pro_labore_previsto'],
-            historico=f"Provisão pró-labore - {entrada.cliente}",
-            automatico=True,
-            editavel=False,
-            entrada_id=entrada_id,
-            tipo_lancamento='provisao',
-            referencia_mes=mes_referencia
-        )
-        db.add(lanc3)
-        lancamentos.append(lanc3)
-    
-    # L4: Provisão INSS Patronal
-    if provisao['inss_patronal_previsto'] > 0:
-        lanc4 = models.LancamentoContabil(
-            data=entrada.data,
-            conta_debito_id=contas['inss_despesa'].id,
-            conta_credito_id=contas['inss_passivo'].id,
-            valor=provisao['inss_patronal_previsto'],
-            historico=f"Provisão INSS patronal 20% - {entrada.cliente}",
-            automatico=True,
-            editavel=False,
-            entrada_id=entrada_id,
-            tipo_lancamento='provisao',
-            referencia_mes=mes_referencia
-        )
-        db.add(lanc4)
-        lancamentos.append(lanc4)
-    
-    # L5: Provisão Fundo de Reserva 10%
-    if provisao['fundo_reserva_previsto'] > 0:
-        lanc5 = models.LancamentoContabil(
-            data=entrada.data,
-            conta_debito_id=contas['lucros_acumulados'].id,
-            conta_credito_id=contas['fundo_reserva'].id,
-            valor=provisao['fundo_reserva_previsto'],
-            historico=f"Provisão fundo de reserva 10% - {entrada.cliente}",
-            automatico=True,
-            editavel=False,
-            entrada_id=entrada_id,
-            tipo_lancamento='provisao',
-            referencia_mes=mes_referencia
-        )
-        db.add(lanc5)
-        lancamentos.append(lanc5)
-    
-    # L6-N: Provisão Lucros Distribuídos por sócio
-    for socio_dist in provisao['distribuicao_socios']:
-        if socio_dist['lucro_disponivel'] > 0:
-            lanc_lucro = models.LancamentoContabil(
-                data=entrada.data,
-                conta_debito_id=contas['lucros_acumulados'].id,
-                conta_credito_id=contas['lucros_distribuidos'].id,
-                valor=socio_dist['lucro_disponivel'],
-                historico=f"Provisão lucro disponível - {socio_dist['nome']} ({socio_dist['percentual_entrada']}%)",
-                automatico=True,
-                editavel=False,
-                entrada_id=entrada_id,
-                tipo_lancamento='provisao',
-                referencia_mes=mes_referencia
-            )
-            db.add(lanc_lucro)
-            lancamentos.append(lanc_lucro)
     
     db.commit()
     
@@ -810,8 +706,13 @@ def gerar_balanco_patrimonial(db: Session, mes: int, ano: int):
     ultimo_dia = calendar.monthrange(ano, mes)[1]
     data_fim = date_type(ano, mes, ultimo_dia)
     
-    def construir_hierarquia(conta_pai_codigo: str):
-        """Constrói hierarquia recursiva de contas"""
+    def construir_hierarquia(conta_pai_codigo: str, inverter_sinal: bool = False):
+        """Constrói hierarquia recursiva de contas
+        
+        Args:
+            conta_pai_codigo: Código da conta raiz
+            inverter_sinal: Se True, inverte o sinal dos saldos (usado para Passivo e PL)
+        """
         contas = db.query(models.PlanoDeContas).filter(
             models.PlanoDeContas.codigo.like(f"{conta_pai_codigo}%"),
             models.PlanoDeContas.ativo == True
@@ -819,16 +720,20 @@ def gerar_balanco_patrimonial(db: Session, mes: int, ano: int):
         
         # Organizar em estrutura hierárquica
         estrutura = []
-        contas_dict = {c.codigo: {
-            "id": c.id,
-            "codigo": c.codigo,
-            "nome": c.descricao,
-            "natureza": c.natureza,
-            "nivel": c.nivel,
-            "aceita_lancamento": c.aceita_lancamento,
-            "saldo": calcular_saldo_conta(db, c.id, data_fim=data_fim),
-            "subgrupos": []
-        } for c in contas}
+        contas_dict = {}
+        for c in contas:
+            saldo_base = calcular_saldo_conta(db, c.id, data_fim=data_fim)
+            saldo_final = -saldo_base if inverter_sinal else saldo_base
+            contas_dict[c.codigo] = {
+                "id": c.id,
+                "codigo": c.codigo,
+                "nome": c.descricao,
+                "natureza": c.natureza,
+                "nivel": c.nivel,
+                "aceita_lancamento": c.aceita_lancamento,
+                "saldo": saldo_final,
+                "subgrupos": []
+            }
         
         # Conectar pais e filhos
         for codigo, conta_data in contas_dict.items():
@@ -857,14 +762,14 @@ def gerar_balanco_patrimonial(db: Session, mes: int, ano: int):
                 if not grupo["aceita_lancamento"]:
                     grupo["saldo"] = sum(sub["saldo"] for sub in grupo["subgrupos"])
     
-    # Gerar estruturas
-    ativo = construir_hierarquia("1")
-    passivo = construir_hierarquia("2")
-    patrimonio_liquido = construir_hierarquia("3")
+    # Gerar estruturas (Passivo e PL com sinal invertido para apresentação)
+    ativo = construir_hierarquia("1", inverter_sinal=False)
+    passivo = construir_hierarquia("2", inverter_sinal=True)
+    patrimonio_liquido = construir_hierarquia("3", inverter_sinal=True)
     
     # Calcular resultado do período (Receitas - Despesas)
-    receitas = construir_hierarquia("4")
-    despesas = construir_hierarquia("5")
+    receitas = construir_hierarquia("4", inverter_sinal=False)
+    despesas = construir_hierarquia("5", inverter_sinal=False)
     
     def calcular_saldo_grupo(grupos):
         """Calcula saldo total de um grupo"""
@@ -930,3 +835,156 @@ def gerar_balanco_patrimonial(db: Session, mes: int, ano: int):
             "passivoMaisPl": total_passivo + total_pl
         }
     }
+
+
+# ===== LANÇAMENTOS AUTOMÁTICOS PARA PAGAMENTOS PENDENTES =====
+
+def lancar_pendencia_gerada(db: Session, pendencia_id: int) -> Optional[models.LancamentoContabil]:
+    """
+    Cria lançamento contábil quando uma pendência é gerada (provisão).
+    
+    Lançamentos por tipo:
+    - SIMPLES: D: 5.3.1 (Despesa Simples) / C: 2.1.4 (Simples a Pagar)
+    - INSS: D: 5.1.3 (Despesa INSS) / C: 2.1.5 (INSS a Pagar)
+    - FUNDO_RESERVA: D: 3.4.1 (Lucros Distribuídos) / C: 3.2.1 (Reserva de Lucros)
+    - LUCRO_SOCIO: D: 3.4.1 (Lucros Distribuídos) / C: 2.1.6 (Lucros a Pagar)
+    """
+    from database.models import PagamentoPendente
+    
+    pendencia = db.query(PagamentoPendente).filter(PagamentoPendente.id == pendencia_id).first()
+    if not pendencia:
+        return None
+    
+    # Mapear tipo de pendência para contas contábeis
+    mapeamento_contas = {
+        "SIMPLES": {
+            "debito": "5.3.1",  # Despesa com Simples
+            "credito": "2.1.4",  # Simples a Pagar
+            "historico": f"Provisão Simples Nacional - {pendencia.descricao}"
+        },
+        "INSS": {
+            "debito": "5.1.3",  # Despesa com INSS
+            "credito": "2.1.5",  # INSS a Pagar
+            "historico": f"Provisão INSS - {pendencia.descricao}"
+        },
+        "FUNDO_RESERVA": {
+            "debito": "3.4.1",  # Lucros Distribuídos (PL)
+            "credito": "3.2.1",  # Reserva de Lucros (PL)
+            "historico": f"Constituição Fundo de Reserva - {pendencia.descricao}"
+        },
+        "LUCRO_SOCIO": {
+            "debito": "3.4.1",  # Lucros Distribuídos (PL)
+            "credito": "2.1.6",  # Lucros a Pagar (Passivo)
+            "historico": f"Provisão lucro a distribuir - {pendencia.descricao}"
+        }
+    }
+    
+    config = mapeamento_contas.get(pendencia.tipo)
+    if not config:
+        return None  # Tipo não mapeado
+    
+    # Buscar contas
+    conta_debito = buscar_conta_por_codigo(db, config["debito"])
+    conta_credito = buscar_conta_por_codigo(db, config["credito"])
+    
+    if not conta_debito or not conta_credito:
+        print(f"⚠️  Contas não encontradas para tipo {pendencia.tipo}: D:{config['debito']} C:{config['credito']}")
+        return None
+    
+    mes_ref = f"{pendencia.ano_ref}-{pendencia.mes_ref:02d}"
+    
+    # Criar lançamento de provisão
+    lancamento = models.LancamentoContabil(
+        data=datetime.now().date(),
+        conta_debito_id=conta_debito.id,
+        conta_credito_id=conta_credito.id,
+        valor=pendencia.valor,
+        historico=config["historico"],
+        automatico=True,
+        editavel=False,
+        tipo_lancamento='provisao',
+        referencia_mes=mes_ref,
+        pago=False
+    )
+    
+    db.add(lancamento)
+    db.commit()
+    db.refresh(lancamento)
+    
+    return lancamento
+
+
+def lancar_pagamento_pendencia(db: Session, pendencia_id: int, data_pagamento: date_type) -> Optional[models.LancamentoContabil]:
+    """
+    Cria lançamento contábil quando uma pendência é confirmada (paga).
+    
+    Lançamentos por tipo (baixa da obrigação):
+    - SIMPLES: D: 2.1.4 (Simples a Pagar) / C: 1.1.1 (Caixa)
+    - INSS: D: 2.1.5 (INSS a Pagar) / C: 1.1.1 (Caixa)
+    - FUNDO_RESERVA: Não gera saída de caixa (apenas transferência interna de PL)
+    - LUCRO_SOCIO: D: 2.1.6 (Lucros a Pagar) / C: 1.1.1 (Caixa)
+    """
+    from database.models import PagamentoPendente
+    
+    pendencia = db.query(PagamentoPendente).filter(PagamentoPendente.id == pendencia_id).first()
+    if not pendencia:
+        return None
+    
+    # Fundo de Reserva não gera saída de caixa
+    if pendencia.tipo == "FUNDO_RESERVA":
+        return None
+    
+    # Mapear tipo de pendência para contas contábeis (pagamento)
+    mapeamento_contas = {
+        "SIMPLES": {
+            "debito": "2.1.4",  # Simples a Pagar
+            "credito": "1.1.1",  # Caixa
+            "historico": f"Pagamento Simples Nacional - {pendencia.descricao}"
+        },
+        "INSS": {
+            "debito": "2.1.5",  # INSS a Pagar
+            "credito": "1.1.1",  # Caixa
+            "historico": f"Pagamento INSS - {pendencia.descricao}"
+        },
+        "LUCRO_SOCIO": {
+            "debito": "2.1.6",  # Lucros a Pagar
+            "credito": "1.1.1",  # Caixa
+            "historico": f"Pagamento de lucros - {pendencia.descricao}"
+        }
+    }
+    
+    config = mapeamento_contas.get(pendencia.tipo)
+    if not config:
+        return None  # Tipo não mapeado
+    
+    # Buscar contas
+    conta_debito = buscar_conta_por_codigo(db, config["debito"])
+    conta_credito = buscar_conta_por_codigo(db, config["credito"])
+    
+    if not conta_debito or not conta_credito:
+        print(f"⚠️  Contas não encontradas para tipo {pendencia.tipo}: D:{config['debito']} C:{config['credito']}")
+        return None
+    
+    mes_ref = f"{pendencia.ano_ref}-{pendencia.mes_ref:02d}"
+    
+    # Criar lançamento de pagamento
+    lancamento = models.LancamentoContabil(
+        data=data_pagamento,
+        conta_debito_id=conta_debito.id,
+        conta_credito_id=conta_credito.id,
+        valor=pendencia.valor,
+        historico=config["historico"],
+        automatico=True,
+        editavel=False,
+        tipo_lancamento='pagamento_provisao',
+        referencia_mes=mes_ref,
+        pago=True,
+        data_pagamento=data_pagamento,
+        valor_pago=pendencia.valor
+    )
+    
+    db.add(lancamento)
+    db.commit()
+    db.refresh(lancamento)
+    
+    return lancamento

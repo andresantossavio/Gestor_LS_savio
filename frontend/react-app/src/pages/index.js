@@ -22,3 +22,4 @@ export { default as PlanoContas } from './PlanoContas.jsx';
 export { default as Balanco } from './Balanco.jsx';
 export { default as DMPL } from './DMPL.jsx';
 export { default as DFC } from './DFC.jsx';
+export { default as OperacoesContabeis } from './OperacoesContabeis.jsx';

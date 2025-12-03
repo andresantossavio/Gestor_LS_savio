@@ -2496,3 +2496,567 @@ def get_saque_fundo(db: Session, saque_id: int):
     return db.query(models.SaqueFundo).filter(
         models.SaqueFundo.id == saque_id
     ).first()
+
+
+# =================================================================
+# CRUD for Operações Contábeis Padronizadas
+# =================================================================
+
+def inicializar_operacoes(db: Session):
+    """Cria as 8 operações contábeis padronizadas no banco de dados"""
+    operacoes_padrao = [
+        {"codigo": "REC_HON", "nome": "Receber honorários", "descricao": "Recebimento de honorários: D-Caixa / C-Receita", "ordem": 1},
+        {"codigo": "RESERVAR_FUNDO", "nome": "Reservar fundo", "descricao": "Transferência para fundo de reserva: D-Lucros Acum. / C-Reserva", "ordem": 2},
+        {"codigo": "PRO_LABORE", "nome": "Pró-labore (bruto)", "descricao": "Pagamento de pró-labore com INSS: D-Despesa Pró-labore / C-Caixa (líquido 89%) + C-INSS a Recolher (11%)", "ordem": 3},
+        {"codigo": "INSS_PATRONAL", "nome": "INSS patronal", "descricao": "Provisão INSS patronal: D-Despesa INSS patronal / C-INSS a Recolher", "ordem": 4},
+        {"codigo": "PAGAR_INSS", "nome": "Pagar INSS", "descricao": "Pagamento de INSS acumulado: D-INSS a Recolher / C-Caixa", "ordem": 5},
+        {"codigo": "DISTRIBUIR_LUCROS", "nome": "Distribuir lucros", "descricao": "Distribuição de lucros aos sócios: D-Lucros Acum. / C-Caixa", "ordem": 6},
+        {"codigo": "PAGAR_DESPESA_FUNDO", "nome": "Pagar despesa via fundo", "descricao": "Pagamento de despesa usando fundo de reserva: D-Outras Despesas / C-Caixa", "ordem": 7},
+        {"codigo": "BAIXAR_FUNDO", "nome": "Baixa do fundo", "descricao": "Transferência do fundo de volta para lucros: D-Reserva / C-Lucros Acum.", "ordem": 8},
+        {"codigo": "PAGAR_ALUGUEL", "nome": "Pagar aluguel", "descricao": "Despesa de aluguel: D-Aluguel / C-Caixa", "ordem": 9},
+        {"codigo": "PAGAR_AGUA_LUZ", "nome": "Pagar água/luz", "descricao": "Despesa de água/luz: D-Água e Luz / C-Caixa", "ordem": 10},
+        {"codigo": "PAGAR_INTERNET", "nome": "Pagar internet/telefone", "descricao": "Despesa de internet/telefone: D-Internet e Telefone / C-Caixa", "ordem": 11},
+        {"codigo": "PAGAR_MATERIAL", "nome": "Pagar material de escritório", "descricao": "Despesa de material de escritório: D-Material de Escritório / C-Caixa", "ordem": 12},
+        {"codigo": "DEPRECIAR_IMOBILIZADO", "nome": "Depreciar imobilizado", "descricao": "Depreciação de imobilizado: D-Depreciação / C-Depreciação Acumulada. Não permite duplicidade no mesmo mês.", "ordem": 13},
+    ]
+    
+    for op_data in operacoes_padrao:
+        # Verifica se já existe
+        existe = db.query(models.Operacao).filter(models.Operacao.codigo == op_data["codigo"]).first()
+        if not existe:
+            operacao = models.Operacao(**op_data)
+            db.add(operacao)
+    
+    db.commit()
+
+
+def listar_operacoes_disponiveis(db: Session) -> List[models.Operacao]:
+    """Lista todas as operações contábeis disponíveis"""
+    return db.query(models.Operacao).filter(
+        models.Operacao.ativo == True
+    ).order_by(models.Operacao.ordem).all()
+
+
+def get_operacao_por_codigo(db: Session, codigo: str) -> Optional[models.Operacao]:
+    """Busca uma operação pelo código"""
+    return db.query(models.Operacao).filter(
+        models.Operacao.codigo == codigo,
+        models.Operacao.ativo == True
+    ).first()
+
+
+def _executar_receber_honorarios(db: Session, operacao_contabil: models.OperacaoContabil, valor: float, data: date_type, descricao: str):
+    """Operação 1: Receber honorários - D-Caixa / C-Receita"""
+    from database.crud_plano_contas import buscar_conta_por_codigo
+    
+    conta_caixa = buscar_conta_por_codigo(db, "1.1")
+    conta_receita = buscar_conta_por_codigo(db, "4.1")
+    
+    if not conta_caixa or not conta_receita:
+        raise ValueError("Contas contábeis não encontradas. Certifique-se que o plano de contas está inicializado.")
+    
+    lancamento = models.LancamentoContabil(
+        data=data,
+        valor=valor,
+        conta_debito_id=conta_caixa.id,
+        conta_credito_id=conta_receita.id,
+        historico=descricao or f"Recebimento de honorários - {data.strftime('%d/%m/%Y')}",
+        tipo_lancamento='operacao_padrao',
+        automatico=True,
+        editavel=False,
+        operacao_contabil_id=operacao_contabil.id,
+        referencia_mes=operacao_contabil.mes_referencia
+    )
+    db.add(lancamento)
+
+
+def _executar_reservar_fundo(db: Session, operacao_contabil: models.OperacaoContabil, valor: float, data: date_type, descricao: str):
+    """Operação 2: Reservar fundo - D-Lucros Acum. / C-Reserva"""
+    from database.crud_plano_contas import buscar_conta_por_codigo
+    
+    conta_lucros_acum = buscar_conta_por_codigo(db, "3.2")
+    conta_reserva = buscar_conta_por_codigo(db, "3.1")
+    
+    if not conta_lucros_acum or not conta_reserva:
+        raise ValueError("Contas contábeis não encontradas.")
+    
+    lancamento = models.LancamentoContabil(
+        data=data,
+        valor=valor,
+        conta_debito_id=conta_lucros_acum.id,
+        conta_credito_id=conta_reserva.id,
+        historico=descricao or f"Transferência para fundo de reserva - {data.strftime('%d/%m/%Y')}",
+        tipo_lancamento='operacao_padrao',
+        automatico=True,
+        editavel=False,
+        operacao_contabil_id=operacao_contabil.id,
+        referencia_mes=operacao_contabil.mes_referencia
+    )
+    db.add(lancamento)
+
+
+def _executar_pro_labore(db: Session, operacao_contabil: models.OperacaoContabil, valor: float, data: date_type, descricao: str):
+    """Operação 3: Pró-labore (bruto) - D-Despesa Pró-labore / C-Caixa (89%) + C-INSS a Recolher (11%)"""
+    from database.crud_plano_contas import buscar_conta_por_codigo
+    
+    conta_despesa_pl = buscar_conta_por_codigo(db, "5.1")
+    conta_caixa = buscar_conta_por_codigo(db, "1.1")
+    conta_inss = buscar_conta_por_codigo(db, "2.1")
+    
+    if not conta_despesa_pl or not conta_caixa or not conta_inss:
+        raise ValueError("Contas contábeis não encontradas.")
+    
+    # Calcular valores
+    valor_inss = valor * 0.11  # 11% de INSS
+    valor_liquido = valor * 0.89  # 89% líquido
+    
+    # Lançamento 1: Débito despesa pró-labore (valor bruto)
+    # Lançamento 2: Crédito caixa (valor líquido)
+    lancamento1 = models.LancamentoContabil(
+        data=data,
+        valor=valor_liquido,
+        conta_debito_id=conta_despesa_pl.id,
+        conta_credito_id=conta_caixa.id,
+        historico=descricao or f"Pró-labore líquido (89%) - {data.strftime('%d/%m/%Y')}",
+        tipo_lancamento='operacao_padrao',
+        automatico=True,
+        editavel=False,
+        operacao_contabil_id=operacao_contabil.id,
+        referencia_mes=operacao_contabil.mes_referencia
+    )
+    db.add(lancamento1)
+    
+    # Lançamento 3: Crédito INSS a recolher (11%)
+    lancamento2 = models.LancamentoContabil(
+        data=data,
+        valor=valor_inss,
+        conta_debito_id=conta_despesa_pl.id,
+        conta_credito_id=conta_inss.id,
+        historico=f"INSS sobre pró-labore (11%) - {data.strftime('%d/%m/%Y')}",
+        tipo_lancamento='operacao_padrao',
+        automatico=True,
+        editavel=False,
+        operacao_contabil_id=operacao_contabil.id,
+        referencia_mes=operacao_contabil.mes_referencia
+    )
+    db.add(lancamento2)
+
+
+def _executar_inss_patronal(db: Session, operacao_contabil: models.OperacaoContabil, valor: float, data: date_type, descricao: str):
+    """Operação 4: INSS patronal - D-Despesa INSS patronal / C-INSS a Recolher"""
+    from database.crud_plano_contas import buscar_conta_por_codigo
+    
+    conta_despesa_inss = buscar_conta_por_codigo(db, "5.2")
+    conta_inss = buscar_conta_por_codigo(db, "2.1")
+    
+    if not conta_despesa_inss or not conta_inss:
+        raise ValueError("Contas contábeis não encontradas.")
+    
+    lancamento = models.LancamentoContabil(
+        data=data,
+        valor=valor,
+        conta_debito_id=conta_despesa_inss.id,
+        conta_credito_id=conta_inss.id,
+        historico=descricao or f"INSS patronal - {data.strftime('%d/%m/%Y')}",
+        tipo_lancamento='operacao_padrao',
+        automatico=True,
+        editavel=False,
+        operacao_contabil_id=operacao_contabil.id,
+        referencia_mes=operacao_contabil.mes_referencia
+    )
+    db.add(lancamento)
+
+
+def _executar_pagar_inss(db: Session, operacao_contabil: models.OperacaoContabil, valor: float, data: date_type, descricao: str):
+    """Operação 5: Pagar INSS - D-INSS a Recolher / C-Caixa"""
+    from database.crud_plano_contas import buscar_conta_por_codigo
+    
+    conta_inss = buscar_conta_por_codigo(db, "2.1")
+    conta_caixa = buscar_conta_por_codigo(db, "1.1")
+    
+    if not conta_inss or not conta_caixa:
+        raise ValueError("Contas contábeis não encontradas.")
+    
+    # Validar se há saldo suficiente em INSS a Recolher
+    saldo_inss = calcular_saldo_conta(db, conta_inss.id)
+    if saldo_inss < valor:
+        raise ValueError(f"Saldo insuficiente em INSS a Recolher. Saldo atual: R$ {saldo_inss:.2f}")
+    
+    lancamento = models.LancamentoContabil(
+        data=data,
+        valor=valor,
+        conta_debito_id=conta_inss.id,
+        conta_credito_id=conta_caixa.id,
+        historico=descricao or f"Pagamento de INSS - {data.strftime('%d/%m/%Y')}",
+        tipo_lancamento='operacao_padrao',
+        automatico=True,
+        editavel=False,
+        operacao_contabil_id=operacao_contabil.id,
+        referencia_mes=operacao_contabil.mes_referencia
+    )
+    db.add(lancamento)
+
+
+def _executar_distribuir_lucros(db: Session, operacao_contabil: models.OperacaoContabil, valor: float, data: date_type, descricao: str):
+    """Operação 6: Distribuir lucros - D-Lucros Acum. / C-Caixa"""
+    from database.crud_plano_contas import buscar_conta_por_codigo
+    
+    conta_lucros_acum = buscar_conta_por_codigo(db, "3.2")
+    conta_caixa = buscar_conta_por_codigo(db, "1.1")
+    
+    if not conta_lucros_acum or not conta_caixa:
+        raise ValueError("Contas contábeis não encontradas.")
+    
+    # Validar se há saldo suficiente em Lucros Acumulados
+    saldo_lucros = calcular_saldo_conta(db, conta_lucros_acum.id)
+    if saldo_lucros < valor:
+        raise ValueError(f"Saldo insuficiente em Lucros Acumulados. Saldo atual: R$ {saldo_lucros:.2f}")
+    
+    lancamento = models.LancamentoContabil(
+        data=data,
+        valor=valor,
+        conta_debito_id=conta_lucros_acum.id,
+        conta_credito_id=conta_caixa.id,
+        historico=descricao or f"Distribuição de lucros - {data.strftime('%d/%m/%Y')}",
+        tipo_lancamento='operacao_padrao',
+        automatico=True,
+        editavel=False,
+        operacao_contabil_id=operacao_contabil.id,
+        referencia_mes=operacao_contabil.mes_referencia
+    )
+    db.add(lancamento)
+
+
+def _executar_pagar_despesa_fundo(db: Session, operacao_contabil: models.OperacaoContabil, valor: float, data: date_type, descricao: str):
+    """Operação 7: Pagar despesa via fundo - D-Outras Despesas / C-Caixa"""
+    from database.crud_plano_contas import buscar_conta_por_codigo
+    
+    conta_outras_despesas = buscar_conta_por_codigo(db, "5.3")
+    conta_caixa = buscar_conta_por_codigo(db, "1.1")
+    
+    if not conta_outras_despesas or not conta_caixa:
+        raise ValueError("Contas contábeis não encontradas.")
+    
+    lancamento = models.LancamentoContabil(
+        data=data,
+        valor=valor,
+        conta_debito_id=conta_outras_despesas.id,
+        conta_credito_id=conta_caixa.id,
+        historico=descricao or f"Pagamento de despesa - {data.strftime('%d/%m/%Y')}",
+        tipo_lancamento='operacao_padrao',
+        automatico=True,
+        editavel=False,
+        operacao_contabil_id=operacao_contabil.id,
+        referencia_mes=operacao_contabil.mes_referencia
+    )
+    db.add(lancamento)
+
+
+def _executar_baixar_fundo(db: Session, operacao_contabil: models.OperacaoContabil, valor: float, data: date_type, descricao: str):
+    """Operação 8: Baixa do fundo - D-Reserva / C-Lucros Acum."""
+    from database.crud_plano_contas import buscar_conta_por_codigo
+    
+    conta_reserva = buscar_conta_por_codigo(db, "3.1")
+    conta_lucros_acum = buscar_conta_por_codigo(db, "3.2")
+    
+    if not conta_reserva or not conta_lucros_acum:
+        raise ValueError("Contas contábeis não encontradas.")
+    
+    # Validar se há saldo suficiente em Reserva
+    saldo_reserva = calcular_saldo_conta(db, conta_reserva.id)
+    if saldo_reserva < valor:
+        raise ValueError(f"Saldo insuficiente em Reserva. Saldo atual: R$ {saldo_reserva:.2f}")
+    
+    lancamento = models.LancamentoContabil(
+        data=data,
+        valor=valor,
+        conta_debito_id=conta_reserva.id,
+        conta_credito_id=conta_lucros_acum.id,
+        historico=descricao or f"Baixa do fundo de reserva - {data.strftime('%d/%m/%Y')}",
+        tipo_lancamento='operacao_padrao',
+        automatico=True,
+        editavel=False,
+        operacao_contabil_id=operacao_contabil.id,
+        referencia_mes=operacao_contabil.mes_referencia
+    )
+    db.add(lancamento)
+
+
+def executar_operacao(
+    db: Session,
+    operacao_codigo: str,
+    valor: float,
+    data: date_type,
+    descricao: Optional[str] = None,
+    socio_id: Optional[int] = None,
+    usuario_id: Optional[int] = None
+) -> models.OperacaoContabil:
+    """
+    Executa uma operação contábil padronizada e gera os lançamentos contábeis correspondentes.
+    
+    Args:
+        operacao_codigo: Código da operação (REC_HON, RESERVAR_FUNDO, etc.)
+        valor: Valor da operação
+        data: Data da operação
+        descricao: Descrição opcional
+        socio_id: ID do sócio (para operações relacionadas a sócios)
+        usuario_id: ID do usuário que está executando a operação
+    
+    Returns:
+        OperacaoContabil criada com seus lançamentos
+    """
+    # Buscar operação
+    operacao = get_operacao_por_codigo(db, operacao_codigo)
+    if not operacao:
+        raise ValueError(f"Operação '{operacao_codigo}' não encontrada ou inativa.")
+    
+    # Calcular mês de referência
+    mes_referencia = data.strftime('%Y-%m')
+    
+    # Criar registro da operação
+    operacao_contabil = models.OperacaoContabil(
+        operacao_id=operacao.id,
+        data=data,
+        valor=valor,
+        descricao=descricao,
+        mes_referencia=mes_referencia,
+        socio_id=socio_id,
+        criado_por_id=usuario_id
+    )
+    db.add(operacao_contabil)
+    db.flush()  # Para obter o ID
+    
+    # Executar a operação específica
+    executores = {
+        "REC_HON": _executar_receber_honorarios,
+        "RESERVAR_FUNDO": _executar_reservar_fundo,
+        "PRO_LABORE": _executar_pro_labore,
+        "INSS_PATRONAL": _executar_inss_patronal,
+        "PAGAR_INSS": _executar_pagar_inss,
+        "DISTRIBUIR_LUCROS": _executar_distribuir_lucros,
+        "PAGAR_DESPESA_FUNDO": _executar_pagar_despesa_fundo,
+        "BAIXAR_FUNDO": _executar_baixar_fundo,
+    }
+    
+    executor = executores.get(operacao_codigo)
+    if not executor:
+        raise ValueError(f"Executor não implementado para operação '{operacao_codigo}'.")
+    
+    # Executar e gerar lançamentos
+    executor(db, operacao_contabil, valor, data, descricao or "")
+    
+    db.commit()
+    db.refresh(operacao_contabil)
+    
+    return operacao_contabil
+
+
+def listar_historico_operacoes(
+    db: Session,
+    mes_referencia: Optional[str] = None,
+    operacao_codigo: Optional[str] = None,
+    socio_id: Optional[int] = None,
+    incluir_cancelados: bool = False
+) -> List[models.OperacaoContabil]:
+    """
+    Lista o histórico de operações contábeis executadas.
+    
+    Args:
+        mes_referencia: Filtrar por mês (formato YYYY-MM)
+        operacao_codigo: Filtrar por código de operação
+        socio_id: Filtrar por sócio
+        incluir_cancelados: Se deve incluir operações canceladas
+    """
+    query = db.query(models.OperacaoContabil).options(
+        joinedload(models.OperacaoContabil.operacao),
+        joinedload(models.OperacaoContabil.socio),
+        joinedload(models.OperacaoContabil.lancamentos)
+    )
+    
+    if not incluir_cancelados:
+        query = query.filter(models.OperacaoContabil.cancelado == False)
+    
+    if mes_referencia:
+        query = query.filter(models.OperacaoContabil.mes_referencia == mes_referencia)
+    
+    if operacao_codigo:
+        query = query.join(models.Operacao).filter(models.Operacao.codigo == operacao_codigo)
+    
+    if socio_id:
+        query = query.filter(models.OperacaoContabil.socio_id == socio_id)
+    
+    return query.order_by(models.OperacaoContabil.data.desc()).all()
+
+
+def cancelar_operacao(db: Session, operacao_contabil_id: int) -> models.OperacaoContabil:
+    """
+    Cancela uma operação contábil e remove seus lançamentos.
+    
+    Args:
+        operacao_contabil_id: ID da operação a cancelar
+    
+    Returns:
+        OperacaoContabil cancelada
+    """
+    operacao_contabil = db.query(models.OperacaoContabil).filter(
+        models.OperacaoContabil.id == operacao_contabil_id
+    ).first()
+    
+    if not operacao_contabil:
+        raise ValueError(f"Operação contábil #{operacao_contabil_id} não encontrada.")
+    
+    if operacao_contabil.cancelado:
+        raise ValueError(f"Operação contábil #{operacao_contabil_id} já está cancelada.")
+    
+    # Remover todos os lançamentos associados
+    db.query(models.LancamentoContabil).filter(
+        models.LancamentoContabil.operacao_contabil_id == operacao_contabil_id
+    ).delete()
+    
+    # Marcar como cancelado
+    operacao_contabil.cancelado = True
+    operacao_contabil.data_cancelamento = datetime.utcnow()
+    
+    db.commit()
+    db.refresh(operacao_contabil)
+    
+    return operacao_contabil
+
+
+def get_operacao_contabil(db: Session, operacao_contabil_id: int) -> Optional[models.OperacaoContabil]:
+    """Busca uma operação contábil pelo ID com relacionamentos"""
+    return db.query(models.OperacaoContabil).options(
+        joinedload(models.OperacaoContabil.operacao),
+        joinedload(models.OperacaoContabil.socio),
+        joinedload(models.OperacaoContabil.lancamentos).joinedload(models.LancamentoContabil.conta_debito),
+        joinedload(models.OperacaoContabil.lancamentos).joinedload(models.LancamentoContabil.conta_credito)
+    ).filter(
+        models.OperacaoContabil.id == operacao_contabil_id
+    ).first()
+
+    # ================================
+    # NOVAS OPERAÇÕES DE DESPESA
+    # ================================
+    from database.crud_plano_contas import buscar_conta_por_codigo, calcular_saldo_conta
+    from datetime import datetime
+
+    def _executar_pagar_aluguel(db: Session, operacao_contabil: models.OperacaoContabil, valor: float, data: date_type, descricao: str):
+        """Despesa de aluguel: D-Aluguel / C-Caixa"""
+        conta_aluguel = buscar_conta_por_codigo(db, "5.2.1")
+        conta_caixa = buscar_conta_por_codigo(db, "1.1.1")
+        if not conta_aluguel or not conta_caixa:
+            raise ValueError("Contas contábeis não encontradas.")
+        saldo_caixa = calcular_saldo_conta(db, conta_caixa.id)
+        if saldo_caixa < valor:
+            raise ValueError(f"Saldo insuficiente em Caixa. Saldo atual: R$ {saldo_caixa:.2f}")
+        lancamento = models.LancamentoContabil(
+            data=data,
+            valor=valor,
+            conta_debito_id=conta_aluguel.id,
+            conta_credito_id=conta_caixa.id,
+            historico=descricao or f"Pagamento de aluguel - {data.strftime('%d/%m/%Y')}",
+            tipo_lancamento='operacao_padrao',
+            automatico=True,
+            editavel=False,
+            operacao_contabil_id=operacao_contabil.id,
+            referencia_mes=operacao_contabil.mes_referencia
+        )
+        db.add(lancamento)
+
+    def _executar_pagar_agua_luz(db: Session, operacao_contabil: models.OperacaoContabil, valor: float, data: date_type, descricao: str):
+        """Despesa de água/luz: D-Água e Luz / C-Caixa"""
+        conta_agua_luz = buscar_conta_por_codigo(db, "5.2.2")
+        conta_caixa = buscar_conta_por_codigo(db, "1.1.1")
+        if not conta_agua_luz or not conta_caixa:
+            raise ValueError("Contas contábeis não encontradas.")
+        saldo_caixa = calcular_saldo_conta(db, conta_caixa.id)
+        if saldo_caixa < valor:
+            raise ValueError(f"Saldo insuficiente em Caixa. Saldo atual: R$ {saldo_caixa:.2f}")
+        lancamento = models.LancamentoContabil(
+            data=data,
+            valor=valor,
+            conta_debito_id=conta_agua_luz.id,
+            conta_credito_id=conta_caixa.id,
+            historico=descricao or f"Pagamento de água/luz - {data.strftime('%d/%m/%Y')}",
+            tipo_lancamento='operacao_padrao',
+            automatico=True,
+            editavel=False,
+            operacao_contabil_id=operacao_contabil.id,
+            referencia_mes=operacao_contabil.mes_referencia
+        )
+        db.add(lancamento)
+
+    def _executar_pagar_internet(db: Session, operacao_contabil: models.OperacaoContabil, valor: float, data: date_type, descricao: str):
+        """Despesa de internet/telefone: D-Internet e Telefone / C-Caixa"""
+        conta_internet = buscar_conta_por_codigo(db, "5.2.3")
+        conta_caixa = buscar_conta_por_codigo(db, "1.1.1")
+        if not conta_internet or not conta_caixa:
+            raise ValueError("Contas contábeis não encontradas.")
+        saldo_caixa = calcular_saldo_conta(db, conta_caixa.id)
+        if saldo_caixa < valor:
+            raise ValueError(f"Saldo insuficiente em Caixa. Saldo atual: R$ {saldo_caixa:.2f}")
+        lancamento = models.LancamentoContabil(
+            data=data,
+            valor=valor,
+            conta_debito_id=conta_internet.id,
+            conta_credito_id=conta_caixa.id,
+            historico=descricao or f"Pagamento de internet/telefone - {data.strftime('%d/%m/%Y')}",
+            tipo_lancamento='operacao_padrao',
+            automatico=True,
+            editavel=False,
+            operacao_contabil_id=operacao_contabil.id,
+            referencia_mes=operacao_contabil.mes_referencia
+        )
+        db.add(lancamento)
+
+    def _executar_pagar_material(db: Session, operacao_contabil: models.OperacaoContabil, valor: float, data: date_type, descricao: str):
+        """Despesa de material de escritório: D-Material de Escritório / C-Caixa"""
+        conta_material = buscar_conta_por_codigo(db, "5.2.4")
+        conta_caixa = buscar_conta_por_codigo(db, "1.1.1")
+        if not conta_material or not conta_caixa:
+            raise ValueError("Contas contábeis não encontradas.")
+        saldo_caixa = calcular_saldo_conta(db, conta_caixa.id)
+        if saldo_caixa < valor:
+            raise ValueError(f"Saldo insuficiente em Caixa. Saldo atual: R$ {saldo_caixa:.2f}")
+        lancamento = models.LancamentoContabil(
+            data=data,
+            valor=valor,
+            conta_debito_id=conta_material.id,
+            conta_credito_id=conta_caixa.id,
+            historico=descricao or f"Pagamento de material de escritório - {data.strftime('%d/%m/%Y')}",
+            tipo_lancamento='operacao_padrao',
+            automatico=True,
+            editavel=False,
+            operacao_contabil_id=operacao_contabil.id,
+            referencia_mes=operacao_contabil.mes_referencia
+        )
+        db.add(lancamento)
+
+    def _executar_depreciar_imobilizado(db: Session, operacao_contabil: models.OperacaoContabil, valor: float, data: date_type, descricao: str):
+        """Depreciação de imobilizado: D-Depreciação / C-Depreciação Acumulada. Impede duplicidade no mesmo mês."""
+        conta_depreciacao = buscar_conta_por_codigo(db, "5.2.5")
+        conta_deprec_acum = buscar_conta_por_codigo(db, "1.2.1.2")
+        if not conta_depreciacao or not conta_deprec_acum:
+            raise ValueError("Contas contábeis não encontradas.")
+        # Impedir duplicidade: verifica se já existe lançamento de depreciação para o mês
+        mes_ref = operacao_contabil.mes_referencia
+        existe = db.query(models.LancamentoContabil).filter(
+            models.LancamentoContabil.conta_debito_id == conta_depreciacao.id,
+            models.LancamentoContabil.conta_credito_id == conta_deprec_acum.id,
+            models.LancamentoContabil.referencia_mes == mes_ref
+        ).first()
+        if existe:
+            raise ValueError(f"Já existe lançamento de depreciação para o mês {mes_ref}.")
+        lancamento = models.LancamentoContabil(
+            data=data,
+            valor=valor,
+            conta_debito_id=conta_depreciacao.id,
+            conta_credito_id=conta_deprec_acum.id,
+            historico=descricao or f"Depreciação de imobilizado - {data.strftime('%d/%m/%Y')}",
+            tipo_lancamento='operacao_padrao',
+            automatico=True,
+            editavel=False,
+            operacao_contabil_id=operacao_contabil.id,
+            referencia_mes=mes_ref
+        )
+        db.add(lancamento)

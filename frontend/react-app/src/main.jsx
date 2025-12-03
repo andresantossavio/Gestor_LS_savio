@@ -28,6 +28,7 @@ import PlanoContas from './pages/PlanoContas'
 import Balanco from './pages/Balanco'
 import DMPL from './pages/DMPL'
 import DFC from './pages/DFC'
+import OperacoesContabeis from './pages/OperacoesContabeis'
 import Sidebar from './components/Sidebar'
 
 import './styles.css';
@@ -64,6 +65,7 @@ function App() {
             <Route path="/contabilidade/despesas/nova" element={<DespesaForm />} />
             {/* Gerenciar Entradas/Despesas */}
             <Route path="/contabilidade/lancamentos" element={<Lancamentos />} />
+            <Route path="/contabilidade/operacoes" element={<OperacoesContabeis />} />
             <Route path="/contabilidade/plano-contas" element={<PlanoContas />} />
             <Route path="/contabilidade/balanco" element={<Balanco />} />
             <Route path="/contabilidade/dmpl" element={<DMPL />} />

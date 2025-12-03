@@ -3,6 +3,7 @@ FROM node:20-alpine AS frontend-builder
 WORKDIR /app/frontend/react-app
 COPY frontend/react-app/package.json frontend/react-app/package-lock.json* ./
 RUN npm install
+RUN npm install axios
 COPY frontend/react-app/ ./
 RUN npm run build
 

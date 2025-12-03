@@ -698,3 +698,60 @@ class SaqueFundoResponse(SaqueFundoBase):
 
     class Config:
         from_attributes = True
+
+
+# ==================== SCHEMAS DE OPERAÇÕES CONTÁBEIS ====================
+
+class OperacaoResponse(BaseModel):
+    id: int
+    codigo: str
+    nome: str
+    descricao: Optional[str] = None
+    ativo: bool
+    ordem: int
+    
+    class Config:
+        from_attributes = True
+
+
+class OperacaoContabilCreate(BaseModel):
+    operacao_codigo: str
+    valor: float
+    data: date
+    descricao: Optional[str] = None
+    socio_id: Optional[int] = None
+
+
+class LancamentoContabilSimples(BaseModel):
+    id: int
+    data: date
+    valor: float
+    conta_debito_codigo: str
+    conta_debito_descricao: str
+    conta_credito_codigo: str
+    conta_credito_descricao: str
+    historico: Optional[str] = None
+    
+    class Config:
+        from_attributes = True
+
+
+class OperacaoContabilResponse(BaseModel):
+    id: int
+    operacao_id: int
+    operacao_nome: str
+    operacao_codigo: str
+    data: date
+    valor: float
+    descricao: Optional[str] = None
+    mes_referencia: str
+    socio_id: Optional[int] = None
+    socio_nome: Optional[str] = None
+    criado_por_id: Optional[int] = None
+    criado_em: datetime
+    cancelado: bool
+    data_cancelamento: Optional[datetime] = None
+    lancamentos: List[LancamentoContabilSimples] = []
+    
+    class Config:
+        from_attributes = True

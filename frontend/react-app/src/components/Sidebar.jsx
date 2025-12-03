@@ -10,6 +10,7 @@ const menuItems = [
         icon: '💰',
         subItems: [
             { name: 'Painel Contábil', to: '/contabilidade', icon: '📊' },
+            { name: 'Operações', to: '/contabilidade/operacoes', icon: '⚡' },
             { name: 'Plano de Contas', to: '/contabilidade/plano-contas', icon: '📑' },
             { name: 'Balanço Patrimonial', to: '/contabilidade/balanco', icon: '📈' },
             { name: 'DMPL', to: '/contabilidade/dmpl', icon: '📉' },

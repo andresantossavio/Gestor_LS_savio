@@ -199,6 +199,159 @@ def validar_balanco_contabil(db: Session = Depends(get_db)):
     """Valida a equação contábil e integridade dos dados"""
     return crud_contabilidade.validar_equacao_contabil(db)
 
+# --- Operações Contábeis Padronizadas ---
+@api_router.get("/contabilidade/operacoes", response_model=List[schemas.OperacaoResponse])
+def listar_operacoes(db: Session = Depends(get_db)):
+    """Lista todas as operações contábeis disponíveis"""
+    return crud_contabilidade.listar_operacoes_disponiveis(db)
+
+@api_router.post("/contabilidade/operacoes/executar", response_model=schemas.OperacaoContabilResponse)
+def executar_operacao_contabil(operacao: schemas.OperacaoContabilCreate, db: Session = Depends(get_db)):
+    """Executa uma operação contábil padronizada"""
+    try:
+        operacao_executada = crud_contabilidade.executar_operacao(
+            db=db,
+            operacao_codigo=operacao.operacao_codigo,
+            valor=operacao.valor,
+            data=operacao.data,
+            descricao=operacao.descricao,
+            socio_id=operacao.socio_id,
+            usuario_id=None  # TODO: Implementar autenticação
+        )
+        
+        # Preparar resposta com lançamentos
+        lancamentos_simples = []
+        for lanc in operacao_executada.lancamentos:
+            lancamentos_simples.append({
+                "id": lanc.id,
+                "data": lanc.data,
+                "valor": lanc.valor,
+                "conta_debito_codigo": lanc.conta_debito.codigo,
+                "conta_debito_descricao": lanc.conta_debito.descricao,
+                "conta_credito_codigo": lanc.conta_credito.codigo,
+                "conta_credito_descricao": lanc.conta_credito.descricao,
+                "historico": lanc.historico
+            })
+        
+        return schemas.OperacaoContabilResponse(
+            id=operacao_executada.id,
+            operacao_id=operacao_executada.operacao_id,
+            operacao_nome=operacao_executada.operacao.nome,
+            operacao_codigo=operacao_executada.operacao.codigo,
+            data=operacao_executada.data,
+            valor=operacao_executada.valor,
+            descricao=operacao_executada.descricao,
+            mes_referencia=operacao_executada.mes_referencia,
+            socio_id=operacao_executada.socio_id,
+            socio_nome=operacao_executada.socio.nome if operacao_executada.socio else None,
+            criado_por_id=operacao_executada.criado_por_id,
+            criado_em=operacao_executada.criado_em,
+            cancelado=operacao_executada.cancelado,
+            data_cancelamento=operacao_executada.data_cancelamento,
+            lancamentos=lancamentos_simples
+        )
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+@api_router.get("/contabilidade/operacoes/historico", response_model=List[schemas.OperacaoContabilResponse])
+def listar_historico_operacoes(
+    mes_referencia: Optional[str] = None,
+    operacao_codigo: Optional[str] = None,
+    socio_id: Optional[int] = None,
+    incluir_cancelados: bool = False,
+    db: Session = Depends(get_db)
+):
+    """Lista o histórico de operações executadas com filtros opcionais"""
+    operacoes = crud_contabilidade.listar_historico_operacoes(
+        db=db,
+        mes_referencia=mes_referencia,
+        operacao_codigo=operacao_codigo,
+        socio_id=socio_id,
+        incluir_cancelados=incluir_cancelados
+    )
+    
+    resultado = []
+    for op in operacoes:
+        lancamentos_simples = []
+        for lanc in op.lancamentos:
+            lancamentos_simples.append({
+                "id": lanc.id,
+                "data": lanc.data,
+                "valor": lanc.valor,
+                "conta_debito_codigo": lanc.conta_debito.codigo,
+                "conta_debito_descricao": lanc.conta_debito.descricao,
+                "conta_credito_codigo": lanc.conta_credito.codigo,
+                "conta_credito_descricao": lanc.conta_credito.descricao,
+                "historico": lanc.historico
+            })
+        
+        resultado.append(schemas.OperacaoContabilResponse(
+            id=op.id,
+            operacao_id=op.operacao_id,
+            operacao_nome=op.operacao.nome,
+            operacao_codigo=op.operacao.codigo,
+            data=op.data,
+            valor=op.valor,
+            descricao=op.descricao,
+            mes_referencia=op.mes_referencia,
+            socio_id=op.socio_id,
+            socio_nome=op.socio.nome if op.socio else None,
+            criado_por_id=op.criado_por_id,
+            criado_em=op.criado_em,
+            cancelado=op.cancelado,
+            data_cancelamento=op.data_cancelamento,
+            lancamentos=lancamentos_simples
+        ))
+    
+    return resultado
+
+@api_router.get("/contabilidade/operacoes/{operacao_contabil_id}", response_model=schemas.OperacaoContabilResponse)
+def obter_operacao_contabil(operacao_contabil_id: int, db: Session = Depends(get_db)):
+    """Obtém uma operação contábil específica pelo ID"""
+    op = crud_contabilidade.get_operacao_contabil(db, operacao_contabil_id)
+    if not op:
+        raise HTTPException(status_code=404, detail="Operação não encontrada")
+    
+    lancamentos_simples = []
+    for lanc in op.lancamentos:
+        lancamentos_simples.append({
+            "id": lanc.id,
+            "data": lanc.data,
+            "valor": lanc.valor,
+            "conta_debito_codigo": lanc.conta_debito.codigo,
+            "conta_debito_descricao": lanc.conta_debito.descricao,
+            "conta_credito_codigo": lanc.conta_credito.codigo,
+            "conta_credito_descricao": lanc.conta_credito.descricao,
+            "historico": lanc.historico
+        })
+    
+    return schemas.OperacaoContabilResponse(
+        id=op.id,
+        operacao_id=op.operacao_id,
+        operacao_nome=op.operacao.nome,
+        operacao_codigo=op.operacao.codigo,
+        data=op.data,
+        valor=op.valor,
+        descricao=op.descricao,
+        mes_referencia=op.mes_referencia,
+        socio_id=op.socio_id,
+        socio_nome=op.socio.nome if op.socio else None,
+        criado_por_id=op.criado_por_id,
+        criado_em=op.criado_em,
+        cancelado=op.cancelado,
+        data_cancelamento=op.data_cancelamento,
+        lancamentos=lancamentos_simples
+    )
+
+@api_router.delete("/contabilidade/operacoes/{operacao_contabil_id}")
+def cancelar_operacao_contabil(operacao_contabil_id: int, db: Session = Depends(get_db)):
+    """Cancela uma operação contábil e remove seus lançamentos"""
+    try:
+        crud_contabilidade.cancelar_operacao(db, operacao_contabil_id)
+        return {"status": "ok", "mensagem": "Operação cancelada com sucesso"}
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
 # --- Entradas ---
 @api_router.get("/contabilidade/entradas", response_model=List[schemas.Entrada])
 def listar_entradas(skip: int = 0, limit: int = 100, db: Session = Depends(get_db)):

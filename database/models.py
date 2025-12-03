@@ -388,6 +388,7 @@ class LancamentoContabil(Base):
     # Relacionamentos para rastrear a origem do lançamento
     entrada_id = Column(Integer, ForeignKey("entradas.id"), nullable=True)
     despesa_id = Column(Integer, ForeignKey("despesas.id"), nullable=True)
+    operacao_contabil_id = Column(Integer, ForeignKey("operacoes_contabeis.id"), nullable=True, index=True)  # Nova FK para operações
     
     # Campos para sistema de provisões
     tipo_lancamento = Column(String(30), default='efetivo', nullable=False)  # 'efetivo', 'provisao', 'pagamento_pro_labore', 'pagamento_lucro', 'pagamento_imposto'
@@ -401,6 +402,7 @@ class LancamentoContabil(Base):
     
     entrada = relationship("Entrada", back_populates="lancamentos")
     despesa = relationship("Despesa", back_populates="lancamentos")
+    operacao_contabil = relationship("OperacaoContabil", back_populates="lancamentos")
     conta_debito = relationship("PlanoDeContas", foreign_keys=[conta_debito_id])
     conta_credito = relationship("PlanoDeContas", foreign_keys=[conta_credito_id])
     usuario_criador = relationship("Usuario", foreign_keys=[criado_por])
@@ -603,3 +605,59 @@ class SaqueFundo(Base):
     # Relationships
     beneficiario = relationship("Socio", back_populates="saques_fundos")
     lancamento = relationship("LancamentoContabil")
+
+
+class Operacao(Base):
+    """Definição das operações contábeis padronizadas"""
+    __tablename__ = "operacoes"
+    __table_args__ = (
+        Index('idx_operacao_codigo', 'codigo'),
+        Index('idx_operacao_ativo', 'ativo'),
+    )
+
+    id = Column(Integer, primary_key=True, index=True)
+    codigo = Column(String(50), unique=True, nullable=False)  # Ex: REC_HON, RESERVAR_FUNDO, PRO_LABORE
+    nome = Column(String(100), nullable=False)  # Ex: "Receber honorários"
+    descricao = Column(Text, nullable=True)  # Descrição detalhada da operação
+    ativo = Column(Boolean, default=True, nullable=False)  # Se a operação está disponível
+    ordem = Column(Integer, default=0, nullable=False)  # Ordem de exibição
+    
+    # Metadata
+    criado_em = Column(DateTime, default=datetime.utcnow, nullable=False)
+    atualizado_em = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
+    
+    # Relationships
+    execucoes = relationship("OperacaoContabil", back_populates="operacao", cascade="all, delete-orphan")
+
+
+class OperacaoContabil(Base):
+    """Registro de execução de uma operação contábil"""
+    __tablename__ = "operacoes_contabeis"
+    __table_args__ = (
+        Index('idx_op_contabil_data', 'data'),
+        Index('idx_op_contabil_mes', 'mes_referencia'),
+        Index('idx_op_contabil_operacao', 'operacao_id'),
+        Index('idx_op_contabil_socio', 'socio_id'),
+    )
+
+    id = Column(Integer, primary_key=True, index=True)
+    operacao_id = Column(Integer, ForeignKey("operacoes.id"), nullable=False)  # Qual operação foi executada
+    data = Column(Date, nullable=False, default=datetime.utcnow)  # Data da operação
+    valor = Column(Float, nullable=False)  # Valor da operação
+    descricao = Column(Text, nullable=True)  # Descrição/histórico da operação
+    mes_referencia = Column(String(7), nullable=False, index=True)  # YYYY-MM para agrupamento
+    
+    # Sócio envolvido (para operações como pró-labore, distribuição de lucros)
+    socio_id = Column(Integer, ForeignKey("socios.id"), nullable=True)
+    
+    # Metadados
+    criado_por_id = Column(Integer, ForeignKey("usuarios.id"), nullable=True)
+    criado_em = Column(DateTime, default=datetime.utcnow, nullable=False)
+    cancelado = Column(Boolean, default=False, nullable=False)  # Se a operação foi cancelada
+    data_cancelamento = Column(DateTime, nullable=True)
+    
+    # Relationships
+    operacao = relationship("Operacao", back_populates="execucoes")
+    socio = relationship("Socio")
+    criado_por = relationship("Usuario")
+    lancamentos = relationship("LancamentoContabil", back_populates="operacao_contabil", cascade="all, delete-orphan")

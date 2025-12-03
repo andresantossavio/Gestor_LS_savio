@@ -15,7 +15,7 @@ const menuItems = [
             { name: 'Balanço Patrimonial', to: '/contabilidade/balanco', icon: '📈' },
             { name: 'DMPL', to: '/contabilidade/dmpl', icon: '📉' },
             { name: 'DFC', to: '/contabilidade/dfc', icon: '💵' },
-            { name: 'DRE', to: '/contabilidade/dre', icon: '📋' },
+            { name: 'Previsão da Operação', to: '/contabilidade/previsao-operacao', icon: '📋' },
             { name: 'Pró-Labore', to: '/contabilidade/pro-labore', icon: '💰' },
             { name: 'Lucros', to: '/contabilidade/lucros', icon: '💵' }
         ]

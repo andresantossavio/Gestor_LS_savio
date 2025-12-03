@@ -498,8 +498,8 @@ class SimplesFaixa(Base):
     ordem = Column(Integer, nullable=False)  # Ordem da faixa (1, 2, 3...)
 
 
-class DREMensal(Base):
-    __tablename__ = "dre_mensal"
+class PrevisaoOperacaoMensal(Base):
+    __tablename__ = "previsao_operacao_mensal"
 
     id = Column(Integer, primary_key=True, index=True)
     mes = Column(String(7), nullable=False, unique=True, index=True)  # YYYY-MM

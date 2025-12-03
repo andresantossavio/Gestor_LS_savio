@@ -25,7 +25,7 @@ const Dashboard = () => {
     const [canRenderCharts, setCanRenderCharts] = useState(true);
     const [loading, setLoading] = useState(true);
     const [balancoPatrimonialData, setBalancoPatrimonialData] = useState({ ativo: 0, passivo: 0, patrimonioLiquido: 0 });
-    const [dreData, setDreData] = useState([]);
+    const [previsaoOperacaoData, setPrevisaoOperacaoData] = useState([]);
     const [lucrosData, setLucrosData] = useState({ disponiveis: 0, distribuidos: 0, fundoReserva: 0, proLabore: 0 });
     const [distribuicaoSociosData, setDistribuicaoSociosData] = useState([]);
     const [ano, setAno] = useState(new Date().getFullYear());
@@ -55,7 +55,7 @@ const Dashboard = () => {
             if (response.ok) {
                 const data = await response.json();
                 setBalancoPatrimonialData(data.balancoPatrimonial);
-                setDreData(data.dreData);
+                setPrevisaoOperacaoData(data.previsaoOperacaoData);
                 setLucrosData(data.lucros);
                 setDistribuicaoSociosData(data.distribuicaoSocios);
                 setAno(data.ano);
@@ -120,10 +120,10 @@ const Dashboard = () => {
                     )}
                 </Widget>
 
-                <Widget title="Demonstração de Resultado (DRE)">
+                <Widget title="Previsão da Operação">
                     {canRenderCharts ? (
                         <ResponsiveContainer width="100%" height={300}>
-                            <BarChart data={dreData} margin={{ top: 20, right: 30, left: 20, bottom: 5 }}>
+                            <BarChart data={previsaoOperacaoData} margin={{ top: 20, right: 30, left: 20, bottom: 5 }}>
                                 <CartesianGrid strokeDasharray="3 3" />
                                 <XAxis dataKey="name" />
                                 <YAxis />
@@ -165,7 +165,7 @@ const Contabilidade = () => {
                 <Link to="/contabilidade/despesas/nova" style={buttonStyle}>+ Nova Despesa</Link>
                 <Link to="/contabilidade/lancamentos" style={buttonStyle}>📋 Gerenciar Lançamentos</Link>
                 <Link to="/contabilidade/socios" style={buttonStyle}>Gerenciar Sócios</Link>
-                <Link to="/contabilidade/dre" style={buttonStyle}>📊 DRE Mensal</Link>
+                <Link to="/contabilidade/previsao-operacao" style={buttonStyle}>📊 Previsão da Operação</Link>
                 <Link to="/contabilidade/pro-labore" style={buttonStyle}>💰 Pró-labore</Link>
                 <Link to="/contabilidade/config-simples" style={buttonStyle}>⚙️ Config Simples</Link>
             </div>

@@ -626,11 +626,11 @@ def create_entrada(db: Session, entrada: schemas.EntradaCreate) -> models.Entrad
     """
     # Validar se o mês está consolidado
     mes_entrada = entrada.data.strftime('%Y-%m')
-    dre_mes = db.query(models.DREMensal).filter(models.DREMensal.mes == mes_entrada).first()
-    if dre_mes and dre_mes.consolidado:
+    previsao_mes = db.query(models.PrevisaoOperacaoMensal).filter(models.PrevisaoOperacaoMensal.mes == mes_entrada).first()
+    if previsao_mes and previsao_mes.consolidado:
         raise ValueError(
             f"Não é possível criar entrada no mês {mes_entrada} pois ele já está consolidado. "
-            "Desconsolide a DRE primeiro."
+            "Desconsolide a Previsão da Operação primeiro."
         )
     
     config = get_configuracao(db)
@@ -702,21 +702,21 @@ def update_entrada(db: Session, entrada_id: int, entrada: schemas.EntradaCreate)
     
     # Validar se o mês antigo está consolidado
     mes_antigo = db_entrada.data.strftime('%Y-%m')
-    dre_mes_antigo = db.query(models.DREMensal).filter(models.DREMensal.mes == mes_antigo).first()
-    if dre_mes_antigo and dre_mes_antigo.consolidado:
+    previsao_mes_antigo = db.query(models.PrevisaoOperacaoMensal).filter(models.PrevisaoOperacaoMensal.mes == mes_antigo).first()
+    if previsao_mes_antigo and previsao_mes_antigo.consolidado:
         raise ValueError(
             f"Não é possível editar entrada do mês {mes_antigo} pois ele já está consolidado. "
-            "Desconsolide a DRE primeiro."
+            "Desconsolide a Previsão da Operação primeiro."
         )
     
     # Validar se o novo mês está consolidado (se a data mudou)
     mes_novo = entrada.data.strftime('%Y-%m')
     if mes_novo != mes_antigo:
-        dre_mes_novo = db.query(models.DREMensal).filter(models.DREMensal.mes == mes_novo).first()
-        if dre_mes_novo and dre_mes_novo.consolidado:
+        previsao_mes_novo = db.query(models.PrevisaoOperacaoMensal).filter(models.PrevisaoOperacaoMensal.mes == mes_novo).first()
+        if previsao_mes_novo and previsao_mes_novo.consolidado:
             raise ValueError(
                 f"Não é possível mover entrada para o mês {mes_novo} pois ele já está consolidado. "
-                "Desconsolide a DRE primeiro."
+                "Desconsolide a Previsão da Operação primeiro."
             )
     
     # Verificar se há pagamentos parciais já realizados para esta entrada
@@ -809,11 +809,11 @@ def delete_entrada(db: Session, entrada_id: int) -> models.Entrada:
     
     # Validar se o mês está consolidado
     mes_entrada = db_entrada.data.strftime('%Y-%m')
-    dre_mes = db.query(models.DREMensal).filter(models.DREMensal.mes == mes_entrada).first()
-    if dre_mes and dre_mes.consolidado:
+    previsao_mes = db.query(models.PrevisaoOperacaoMensal).filter(models.PrevisaoOperacaoMensal.mes == mes_entrada).first()
+    if previsao_mes and previsao_mes.consolidado:
         raise ValueError(
             f"Não é possível deletar entrada do mês {mes_entrada} pois ele já está consolidado. "
-            "Desconsolide a DRE primeiro."
+            "Desconsolide a Previsão da Operação primeiro."
         )
 
     # Configuração (percentual fundo)
@@ -849,7 +849,7 @@ def delete_entrada(db: Session, entrada_id: int) -> models.Entrada:
     db.delete(db_entrada)
     db.commit()
     
-    # Recalcular lançamentos automáticos do mês para atualizar DRE
+    # Recalcular lançamentos automáticos do mês para atualizar Previsão da Operação
     atualizar_lancamentos_mes(db, mes_entrada)
     
     # Atualizar lançamentos contábeis do mês
@@ -873,11 +873,11 @@ def create_despesa(db: Session, despesa: schemas.DespesaCreate) -> models.Despes
     """
     # Validar se o mês está consolidado
     mes_despesa = despesa.data.strftime('%Y-%m')
-    dre_mes = db.query(models.DREMensal).filter(models.DREMensal.mes == mes_despesa).first()
-    if dre_mes and dre_mes.consolidado:
+    previsao_mes = db.query(models.PrevisaoOperacaoMensal).filter(models.PrevisaoOperacaoMensal.mes == mes_despesa).first()
+    if previsao_mes and previsao_mes.consolidado:
         raise ValueError(
             f"Não é possível criar despesa no mês {mes_despesa} pois ele já está consolidado. "
-            "Desconsolide a DRE primeiro."
+            "Desconsolide a Previsão da Operação primeiro."
         )
     
     despesa_data = despesa.dict(exclude={'responsaveis'})
@@ -925,21 +925,21 @@ def update_despesa(db: Session, despesa_id: int, despesa: schemas.DespesaCreate)
     
     # Validar se o mês antigo está consolidado
     mes_antigo = db_despesa.data.strftime('%Y-%m')
-    dre_mes_antigo = db.query(models.DREMensal).filter(models.DREMensal.mes == mes_antigo).first()
-    if dre_mes_antigo and dre_mes_antigo.consolidado:
+    previsao_mes_antigo = db.query(models.PrevisaoOperacaoMensal).filter(models.PrevisaoOperacaoMensal.mes == mes_antigo).first()
+    if previsao_mes_antigo and previsao_mes_antigo.consolidado:
         raise ValueError(
             f"Não é possível editar despesa do mês {mes_antigo} pois ele já está consolidado. "
-            "Desconsolide a DRE primeiro."
+            "Desconsolide a Previsão da Operação primeiro."
         )
     
     # Validar se o novo mês está consolidado (se a data mudou)
     mes_novo = despesa.data.strftime('%Y-%m')
     if mes_novo != mes_antigo:
-        dre_mes_novo = db.query(models.DREMensal).filter(models.DREMensal.mes == mes_novo).first()
-        if dre_mes_novo and dre_mes_novo.consolidado:
+        previsao_mes_novo = db.query(models.PrevisaoOperacaoMensal).filter(models.PrevisaoOperacaoMensal.mes == mes_novo).first()
+        if previsao_mes_novo and previsao_mes_novo.consolidado:
             raise ValueError(
                 f"Não é possível mover despesa para o mês {mes_novo} pois ele já está consolidado. "
-                "Desconsolide a DRE primeiro."
+                "Desconsolide a Previsão da Operação primeiro."
             )
     
     # Atualizar campos básicos
@@ -1002,11 +1002,11 @@ def delete_despesa(db: Session, despesa_id: int) -> models.Despesa:
     
     # Validar se o mês está consolidado
     mes_despesa = db_despesa.data.strftime('%Y-%m')
-    dre_mes = db.query(models.DREMensal).filter(models.DREMensal.mes == mes_despesa).first()
-    if dre_mes and dre_mes.consolidado:
+    previsao_mes = db.query(models.PrevisaoOperacaoMensal).filter(models.PrevisaoOperacaoMensal.mes == mes_despesa).first()
+    if previsao_mes and previsao_mes.consolidado:
         raise ValueError(
             f"Não é possível deletar despesa do mês {mes_despesa} pois ele já está consolidado. "
-            "Desconsolide a DRE primeiro."
+            "Desconsolide a Previsão da Operação primeiro."
         )
     
     # Excluir associações com sócios responsáveis primeiro
@@ -1241,7 +1241,7 @@ def delete_simples_faixa(db: Session, faixa_id: int) -> bool:
     return False
 
 # =================================================================
-# CRUD e cálculo para DREMensal
+# CRUD e cálculo para PrevisaoOperacaoMensal
 # =================================================================
 
 def calcular_pro_labore_iterativo(lucro_bruto: float, percentual_contrib_admin: float = 100.0, salario_minimo: float = 1518.0) -> tuple:
@@ -1254,7 +1254,7 @@ def calcular_pro_labore_iterativo(lucro_bruto: float, percentual_contrib_admin: 
     - Limitado ao salário mínimo
     
     O lucro líquido depende do INSS patronal (20% do pró-labore), criando uma dependência circular.
-    IMPORTANTE: O pró-labore NÃO é despesa na DRE, apenas o INSS PATRONAL (20%) é!
+    IMPORTANTE: O pró-labore NÃO é despesa na Previsão da Operação, apenas o INSS PATRONAL (20%) é!
     O INSS PESSOAL (11%) é desconto do funcionário, não é despesa da empresa.
     
     Fórmulas:
@@ -1816,9 +1816,9 @@ def distribuir_lucros_socios(db: Session, mes: str, lucro_disponivel: float) -> 
     return lancamentos
 
 
-def consolidar_dre_mes(db: Session, mes: str, forcar_recalculo: bool = False) -> models.DREMensal:
+def consolidar_previsao_operacao_mes(db: Session, mes: str, forcar_recalculo: bool = False) -> models.PrevisaoOperacaoMensal:
     """
-    Consolida ou recalcula a DRE de um mês específico (YYYY-MM).
+    Consolida ou recalcula a Previsão da Operação de um mês específico (YYYY-MM).
     
     Args:
         db: Sessão do banco
@@ -1826,7 +1826,7 @@ def consolidar_dre_mes(db: Session, mes: str, forcar_recalculo: bool = False) ->
         forcar_recalculo: Se True, recalcula mesmo se já consolidado
     
     Returns:
-        DREMensal consolidado
+        PrevisaoOperacaoMensal consolidado
     """
     from utils.datas import ultimos_12_meses, inicio_do_mes, fim_do_mes
     from utils.simples import calcular_faixa_simples, calcular_imposto_simples
@@ -1834,9 +1834,9 @@ def consolidar_dre_mes(db: Session, mes: str, forcar_recalculo: bool = False) ->
     from datetime import datetime
     
     # Verificar se já existe e se está consolidado
-    dre_existente = db.query(models.DREMensal).filter(models.DREMensal.mes == mes).first()
-    if dre_existente and dre_existente.consolidado and not forcar_recalculo:
-        return dre_existente
+    previsao_existente = db.query(models.PrevisaoOperacaoMensal).filter(models.PrevisaoOperacaoMensal.mes == mes).first()
+    if previsao_existente and previsao_existente.consolidado and not forcar_recalculo:
+        return previsao_existente
     
     # IMPORTANTE: Atualizar lançamentos automáticos ANTES de consolidar
     # Isso garante que provisões (receita, despesa, simples, inss, fechamento, reserva)
@@ -1929,25 +1929,25 @@ def consolidar_dre_mes(db: Session, mes: str, forcar_recalculo: bool = False) ->
     # 9. Calcular reserva 10%
     reserva_10p = lucro_liquido * 0.10
     
-    # 10. Salvar ou atualizar DRE
-    if dre_existente:
-        dre_existente.receita_bruta = receita_bruta
-        dre_existente.receita_12m = receita_12m
-        dre_existente.aliquota = aliquota
-        dre_existente.aliquota_efetiva = aliquota_efetiva
-        dre_existente.deducao = deducao
-        dre_existente.imposto = imposto
-        dre_existente.pro_labore = pro_labore
-        dre_existente.inss_patronal = inss_patronal
-        dre_existente.inss_pessoal = inss_pessoal
-        dre_existente.despesas_gerais = despesas_gerais
-        dre_existente.lucro_liquido = lucro_liquido
-        dre_existente.reserva_10p = reserva_10p
-        dre_existente.consolidado = True
-        dre_existente.data_consolidacao = datetime.utcnow()
-        db_dre = dre_existente
+    # 10. Salvar ou atualizar Previsão da Operação
+    if previsao_existente:
+        previsao_existente.receita_bruta = receita_bruta
+        previsao_existente.receita_12m = receita_12m
+        previsao_existente.aliquota = aliquota
+        previsao_existente.aliquota_efetiva = aliquota_efetiva
+        previsao_existente.deducao = deducao
+        previsao_existente.imposto = imposto
+        previsao_existente.pro_labore = pro_labore
+        previsao_existente.inss_patronal = inss_patronal
+        previsao_existente.inss_pessoal = inss_pessoal
+        previsao_existente.despesas_gerais = despesas_gerais
+        previsao_existente.lucro_liquido = lucro_liquido
+        previsao_existente.reserva_10p = reserva_10p
+        previsao_existente.consolidado = True
+        previsao_existente.data_consolidacao = datetime.utcnow()
+        db_previsao_operacao = previsao_existente
     else:
-        db_dre = models.DREMensal(
+        db_previsao_operacao = models.PrevisaoOperacaoMensal(
             mes=mes,
             receita_bruta=receita_bruta,
             receita_12m=receita_12m,
@@ -1964,21 +1964,21 @@ def consolidar_dre_mes(db: Session, mes: str, forcar_recalculo: bool = False) ->
             consolidado=True,
             data_consolidacao=datetime.utcnow()
         )
-        db.add(db_dre)
+        db.add(db_previsao_operacao)
     
     db.commit()
-    db.refresh(db_dre)
+    db.refresh(db_previsao_operacao)
 
     # Lançamentos de provisão removidos - não mais automáticos
 
     # Registrar fechamento do resultado no razão para refletir no PL (3.3) - OBRIGATÓRIO
     # SEMPRE recriar para garantir atualização após desconsolidar/excluir/reconsolidar
     from database.crud_plano_contas import registrar_fechamento_resultado, buscar_conta_por_codigo
-    registrar_fechamento_resultado(db, mes, db_dre.lucro_liquido, recriar=True)
+    registrar_fechamento_resultado(db, mes, db_previsao_operacao.lucro_liquido, recriar=True)
     
     # Alocar 10% para reserva legal
-    if db_dre.reserva_10p > 0:
-        alocar_reserva_legal(db, mes, db_dre.reserva_10p)
+    if db_previsao_operacao.reserva_10p > 0:
+        alocar_reserva_legal(db, mes, db_previsao_operacao.reserva_10p)
     else:
         # Se reserva zerou, deletar lançamento existente
         db.query(models.LancamentoContabil).filter(
@@ -2016,7 +2016,7 @@ def consolidar_dre_mes(db: Session, mes: str, forcar_recalculo: bool = False) ->
             cobrir_deficit_caixa(db, total_impostos, mes)
         except ValueError as e:
             db.rollback()
-            raise ValueError(f"Erro ao consolidar DRE: {str(e)}")
+            raise ValueError(f"Erro ao consolidar Previsão da Operação: {str(e)}")
     
     # 4. Criar lançamento de pagamento do SIMPLES: D 2.1.4 (Simples a Pagar) / C 1.1.1 (Caixa)
     if imposto > 0:
@@ -2031,7 +2031,7 @@ def consolidar_dre_mes(db: Session, mes: str, forcar_recalculo: bool = False) ->
             conta_debito_id=conta_simples_pagar.id,
             conta_credito_id=conta_caixa.id,
             valor=imposto,
-            historico=f"Pagamento Simples Nacional - {mes}",
+            historico=f"Pagamento Simples Nacional (Previsão da Operação) - {mes}",
             automatico=True,
             editavel=False,
             tipo_lancamento='pagamento_simples',
@@ -2052,7 +2052,7 @@ def consolidar_dre_mes(db: Session, mes: str, forcar_recalculo: bool = False) ->
             conta_debito_id=conta_inss_recolher.id,
             conta_credito_id=conta_caixa.id,
             valor=inss_total,
-            historico=f"Pagamento INSS (31%: 20% Patronal + 11% Pessoal) - {mes}",
+            historico=f"Pagamento INSS (Previsão da Operação, 31%: 20% Patronal + 11% Pessoal) - {mes}",
             automatico=True,
             editavel=False,
             tipo_lancamento='pagamento_inss',
@@ -2067,15 +2067,15 @@ def consolidar_dre_mes(db: Session, mes: str, forcar_recalculo: bool = False) ->
             distribuir_lucros_socios(db, mes, lucro_disponivel)
         except ValueError as e:
             db.rollback()
-            raise ValueError(f"Erro ao distribuir lucros: {str(e)}")
+            raise ValueError(f"Erro ao distribuir lucros (Previsão da Operação): {str(e)}")
     
     db.commit()
     
-    return db_dre
+    return db_previsao_operacao
 
-def desconsolidar_dre_mes(db: Session, mes: str) -> Optional[models.DREMensal]:
+def desconsolidar_previsao_operacao_mes(db: Session, mes: str) -> Optional[models.PrevisaoOperacaoMensal]:
     """
-    Desconsolida um mês de DRE, permitindo recalcular posteriormente.
+    Desconsolida um mês de Previsão da Operação, permitindo recalcular posteriormente.
     Remove lançamentos de consolidação (pagamento Simples, pagamento INSS, distribuição lucro, cobertura déficit).
     
     Args:
@@ -2083,10 +2083,10 @@ def desconsolidar_dre_mes(db: Session, mes: str) -> Optional[models.DREMensal]:
         mes: Mês no formato YYYY-MM
     
     Returns:
-        DREMensal desconsolidado ou None se não existir
+        PrevisaoOperacaoMensal desconsolidado ou None se não existir
     """
-    dre = db.query(models.DREMensal).filter(models.DREMensal.mes == mes).first()
-    if dre:
+    previsao = db.query(models.PrevisaoOperacaoMensal).filter(models.PrevisaoOperacaoMensal.mes == mes).first()
+    if previsao:
         # Deletar lançamentos de consolidação
         tipos_consolidacao = ['pagamento_simples', 'pagamento_inss', 'distribuicao_lucro', 'cobertura_deficit']
         db.query(models.LancamentoContabil).filter(
@@ -2097,22 +2097,22 @@ def desconsolidar_dre_mes(db: Session, mes: str) -> Optional[models.DREMensal]:
         # Recalcular lançamentos automáticos do mês
         atualizar_lancamentos_mes(db, mes)
         
-        # Marcar DRE como não consolidado
-        dre.consolidado = False
-        dre.data_consolidacao = None
+        # Marcar Previsão da Operação como não consolidado
+        previsao.consolidado = False
+        previsao.data_consolidacao = None
         db.commit()
-        db.refresh(dre)
-    return dre
+        db.refresh(previsao)
+    return previsao
 
-def get_dre_mensal(db: Session, mes: str) -> Optional[models.DREMensal]:
-    """Busca DRE de um mês específico."""
-    return db.query(models.DREMensal).filter(models.DREMensal.mes == mes).first()
+def get_previsao_operacao_mensal(db: Session, mes: str) -> Optional[models.PrevisaoOperacaoMensal]:
+    """Busca Previsão da Operação de um mês específico."""
+    return db.query(models.PrevisaoOperacaoMensal).filter(models.PrevisaoOperacaoMensal.mes == mes).first()
 
-def get_dre_ano(db: Session, ano: int) -> List[models.DREMensal]:
-    """Busca DRE de todos os meses de um ano."""
+def get_previsao_operacao_ano(db: Session, ano: int) -> List[models.PrevisaoOperacaoMensal]:
+    """Busca Previsão da Operação de todos os meses de um ano."""
     from utils.datas import meses_do_ano
     meses = meses_do_ano(ano)
-    return db.query(models.DREMensal).filter(models.DREMensal.mes.in_(meses)).order_by(models.DREMensal.mes).all()
+    return db.query(models.PrevisaoOperacaoMensal).filter(models.PrevisaoOperacaoMensal.mes.in_(meses)).order_by(models.PrevisaoOperacaoMensal.mes).all()
 
 def calcular_percentual_participacao_socio(db: Session, socio_id: int, mes: str) -> float:
     """

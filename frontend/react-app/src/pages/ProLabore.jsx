@@ -289,10 +289,10 @@ function ProLabore() {
               <li><strong>Percentual de Contribuição:</strong> Calculado com base nas entradas reais do mês</li>
               <li><strong>Pró-labore do Administrador:</strong> 5% do lucro + 85% do lucro × % contrib. (máximo: salário mínimo)</li>
               <li><strong>INSS Total:</strong> 31% do pró-labore (11% pessoal + 20% patronal)</li>
-              <li><strong>Lucro Líquido (DRE):</strong> Lucro Bruto - INSS Total (o pró-labore NÃO é despesa)</li>
+              <li><strong>Lucro Líquido (Previsão da Operação):</strong> Lucro Bruto - INSS Total (o pró-labore NÃO é despesa)</li>
               <li><strong>Lucro Final do Sócio:</strong> Pró-labore Líquido + Lucro Disponível (para não-admin) ou apenas Pró-labore Líquido (para admin)</li>
               <li style={{ marginTop: '10px', paddingTop: '10px', borderTop: '1px solid #facc15' }}>
-                <strong>⚠️ Importante:</strong> O pró-labore não é contabilizado como despesa na DRE, mas sim como distribuição de lucro. 
+                <strong>⚠️ Importante:</strong> O pró-labore não é contabilizado como despesa na Previsão da Operação, mas sim como distribuição de lucro. 
                 Apenas os encargos (INSS) são despesas.
               </li>
             </ul>

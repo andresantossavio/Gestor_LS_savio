@@ -346,7 +346,7 @@ const ConfigSimples = () => {
                     Se a legislação mudar, adicione novas faixas com vigência futura e encerre as antigas definindo a "Vigência Fim".
                 </p>
                 <p style={{ fontSize: 14 }}>
-                    Meses já consolidados não serão alterados automaticamente. Use o botão "Recalcular" na DRE para atualizar meses específicos após mudar faixas.
+                    Meses já consolidados não serão alterados automaticamente. Use o botão "Recalcular" na Previsão da Operação para atualizar meses específicos após mudar faixas.
                 </p>
             </div>
         </div>

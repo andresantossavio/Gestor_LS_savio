@@ -19,7 +19,7 @@ import Contabilidade from './pages/Contabilidade'
 import EntradaForm from './pages/EntradaForm'
 import DespesaForm from './pages/DespesaForm'
 import SocioPage from './pages/SocioPage'
-import DRE from './pages/DRE'
+import PrevisaoOperacao from './pages/PrevisaoOperacao'
 import ProLabore from './pages/ProLabore'
 import Lucros from './pages/Lucros'
 import ConfigSimples from './pages/ConfigSimples'
@@ -71,7 +71,7 @@ function App() {
             <Route path="/contabilidade/dmpl" element={<DMPL />} />
             <Route path="/contabilidade/dfc" element={<DFC />} />
             <Route path="/contabilidade/socios" element={<SocioPage />} />
-            <Route path="/contabilidade/dre" element={<DRE />} />
+            <Route path="/contabilidade/previsao-operacao" element={<PrevisaoOperacao />} />
             <Route path="/contabilidade/pro-labore" element={<ProLabore />} />
             <Route path="/contabilidade/lucros" element={<Lucros />} />
             <Route path="/contabilidade/config-simples" element={<ConfigSimples />} />

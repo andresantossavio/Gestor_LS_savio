@@ -112,7 +112,7 @@ const Lucros = () => {
 
             <div style={{ marginTop: 20, padding: 15, backgroundColor: '#f9fafb', borderRadius: 8 }}>
                 <h3 style={{ marginTop: 0 }}>Legenda</h3>
-                <p><span style={{ display: 'inline-block', width: 20, height: 20, backgroundColor: '#f0fdf4', border: '1px solid #ccc', marginRight: 8 }}></span>✅ Mês consolidado (valores baseados na DRE consolidada)</p>
+                <p><span style={{ display: 'inline-block', width: 20, height: 20, backgroundColor: '#f0fdf4', border: '1px solid #ccc', marginRight: 8 }}></span>✅ Mês consolidado (valores baseados na Previsão da Operação consolidada)</p>
                 <p><span style={{ display: 'inline-block', width: 20, height: 20, backgroundColor: '#fef9e7', border: '1px solid #ccc', marginRight: 8 }}></span>Valores provisórios (calculados em tempo real)</p>
                 <p style={{ fontSize: 14, color: '#6b7280', marginTop: 15 }}>
                     <strong>Como funciona:</strong>

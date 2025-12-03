@@ -422,10 +422,10 @@ def deletar_despesa(despesa_id: int, db: Session = Depends(get_db)):
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
 
-# --- DRE ---
-@api_router.get("/contabilidade/dre")
-def listar_dre_ano(year: int, calcular_tempo_real: bool = False, db: Session = Depends(get_db)):
-    """Retorna DRE dos 12 meses do ano especificado."""
+ # --- Previsão da Operação ---
+@api_router.get("/contabilidade/previsao-operacao")
+def listar_previsao_operacao_ano(year: int, calcular_tempo_real: bool = False, db: Session = Depends(get_db)):
+    """Retorna Previsão da Operação dos 12 meses do ano especificado."""
     from utils.datas import meses_do_ano, inicio_do_mes, fim_do_mes, ultimos_12_meses
     from utils.simples import calcular_faixa_simples, calcular_imposto_simples
     from sqlalchemy import func
@@ -434,25 +434,25 @@ def listar_dre_ano(year: int, calcular_tempo_real: bool = False, db: Session = D
     
     resultado = []
     for mes in meses:
-        dre = crud_contabilidade.get_dre_mensal(db, mes)
+        previsao = crud_contabilidade.get_previsao_operacao_mensal(db, mes)
         
         # Se está consolidado, retornar dados consolidados
-        if dre and dre.consolidado:
+        if previsao and previsao.consolidado:
             resultado.append({
-                "mes": dre.mes,
-                "receita_bruta": dre.receita_bruta,
-                "receita_12m": dre.receita_12m,
-                "aliquota": dre.aliquota,
-                "aliquota_efetiva": dre.aliquota_efetiva,
-                "deducao": dre.deducao,
-                "imposto": dre.imposto,
-                "pro_labore": dre.pro_labore,
-                "inss_patronal": dre.inss_patronal,
-                "inss_pessoal": dre.inss_pessoal,
-                "inss_total": (dre.inss_patronal + dre.inss_pessoal),
-                "despesas_gerais": dre.despesas_gerais,
-                "lucro_liquido": dre.lucro_liquido,
-                "reserva_10p": dre.reserva_10p,
+                "mes": previsao.mes,
+                "receita_bruta": previsao.receita_bruta,
+                "receita_12m": previsao.receita_12m,
+                "aliquota": previsao.aliquota,
+                "aliquota_efetiva": previsao.aliquota_efetiva,
+                "deducao": previsao.deducao,
+                "imposto": previsao.imposto,
+                "pro_labore": previsao.pro_labore,
+                "inss_patronal": previsao.inss_patronal,
+                "inss_pessoal": previsao.inss_pessoal,
+                "inss_total": (previsao.inss_patronal + previsao.inss_pessoal),
+                "despesas_gerais": previsao.despesas_gerais,
+                "lucro_liquido": previsao.lucro_liquido,
+                "reserva_10p": previsao.reserva_10p,
                 "consolidado": True
             })
         # Se não está consolidado e foi pedido cálculo em tempo real
@@ -608,21 +608,21 @@ def listar_lucros_ano(year: int, calcular_tempo_real: bool = True, db: Session =
         # Extrair ano e mês do formato "YYYY-MM"
         year_int, month_int = map(int, mes.split('-'))
         
-        # Buscar DRE consolidada
-        dre = crud_contabilidade.get_dre_mensal(db, mes)
+        # Buscar Previsão da Operação consolidada
+        previsao = crud_contabilidade.get_previsao_operacao_mensal(db, mes)
         
         consolidado = False
         lucro_liquido = 0.0
         
-        if dre and dre.consolidado:
+        if previsao and previsao.consolidado:
             # Usar dados consolidados
-            lucro_liquido = float(dre.lucro_liquido or 0)
+            lucro_liquido = float(previsao.lucro_liquido or 0)
             consolidado = True
         elif calcular_tempo_real:
             # Calcular em tempo real
-            dre_calculada = _calcular_dre_mes(db, year_int, month_int)
-            if dre_calculada:
-                lucro_liquido = float(dre_calculada.get("lucro_liquido", 0))
+            previsao_calculada = _calcular_previsao_operacao_mes(db, year_int, month_int)
+            if previsao_calculada:
+                lucro_liquido = float(previsao_calculada.get("lucro_liquido", 0))
             consolidado = False
         
         # Calcular distribuições
@@ -697,7 +697,7 @@ def obter_pro_labore_socio(
 
     for mes_str in meses:
         # Consolidado primeiro
-        dre = crud_contabilidade.get_dre_mensal(db, mes_str)
+        previsao = crud_contabilidade.get_previsao_operacao_mensal(db, mes_str)
 
         inicio = inicio_do_mes(mes_str)
         fim = fim_do_mes(mes_str)
@@ -720,13 +720,13 @@ def obter_pro_labore_socio(
 
         percentual_contrib = (contribuicao_socio / faturamento_total * 100.0) if faturamento_total > 0 else 0.0
 
-        if dre and dre.consolidado:
-            pro_labore_bruto = float(dre.pro_labore or 0)
-            inss_patronal = float(dre.inss_patronal or 0)
-            inss_pessoal = float(dre.inss_pessoal or 0)
-            lucro_liquido = float(dre.lucro_liquido or 0)
+        if previsao and previsao.consolidado:
+            pro_labore_bruto = float(previsao.pro_labore or 0)
+            inss_patronal = float(previsao.inss_patronal or 0)
+            inss_pessoal = float(previsao.inss_pessoal or 0)
+            lucro_liquido = float(previsao.lucro_liquido or 0)
         else:
-            # Cálculo em tempo real replicando o de DRE
+            # Cálculo em tempo real replicando o de Previsão da Operação
             # Receita do mês
             receita_bruta = db.query(func.sum(models.Entrada.valor)).filter(
                 models.Entrada.data >= inicio,
@@ -785,35 +785,35 @@ def obter_pro_labore_socio(
 
     return {"socio_id": socio_id, "ano": year, "meses": saida}
 
-@api_router.post("/contabilidade/dre/consolidar")
-def consolidar_dre(mes: str, forcar: bool = False, db: Session = Depends(get_db)):
-    """Consolida a DRE de um mês - apenas congela os valores calculados."""
+@api_router.post("/contabilidade/previsao-operacao/consolidar")
+def consolidar_previsao_operacao(mes: str, forcar: bool = False, db: Session = Depends(get_db)):
+    """Consolida a Previsão da Operação de um mês - apenas congela os valores calculados."""
     try:
-        dre = crud_contabilidade.consolidar_dre_mes(db, mes, forcar_recalculo=forcar)
-        
+        previsao = crud_contabilidade.consolidar_previsao_operacao_mes(db, mes, forcar_recalculo=forcar)
         return {
-            "mes": dre.mes,
-            "receita_bruta": dre.receita_bruta,
-            "receita_12m": dre.receita_12m,
-            "aliquota": dre.aliquota,
-            "aliquota_efetiva": dre.aliquota_efetiva,
-            "deducao": dre.deducao,
-            "imposto": dre.imposto,
-            "pro_labore": dre.pro_labore,
-            "inss_patronal": dre.inss_patronal,
-            "inss_pessoal": dre.inss_pessoal,
-            "inss_total": (dre.inss_patronal + dre.inss_pessoal),
-            "despesas_gerais": dre.despesas_gerais,
-            "lucro_liquido": dre.lucro_liquido,
-            "reserva_10p": dre.reserva_10p,
-            "consolidado": dre.consolidado
+            "mes": previsao.mes,
+            "receita_bruta": previsao.receita_bruta,
+            "receita_12m": previsao.receita_12m,
+            "aliquota": previsao.aliquota,
+            "aliquota_efetiva": previsao.aliquota_efetiva,
+            "deducao": previsao.deducao,
+            "imposto": previsao.imposto,
+            "pro_labore": previsao.pro_labore,
+            "inss_patronal": previsao.inss_patronal,
+            "inss_pessoal": previsao.inss_pessoal,
+            "inss_total": (previsao.inss_patronal + previsao.inss_pessoal),
+            "despesas_gerais": previsao.despesas_gerais,
+            "lucro_liquido": previsao.lucro_liquido,
+            "reserva_10p": previsao.reserva_10p,
+            "consolidado": previsao.consolidado
         }
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
+        raise HTTPException(status_code=400, detail=str(e))
 
-@api_router.delete("/contabilidade/dre/consolidar")
-def desconsolidar_dre(mes: str, db: Session = Depends(get_db)):
-    """Desconsolida um mês de DRE, permitindo recalcular posteriormente."""
+@api_router.delete("/contabilidade/previsao-operacao/consolidar")
+def desconsolidar_previsao_operacao(mes: str, db: Session = Depends(get_db)):
+    """Desconsolida um mês de Previsão da Operação, permitindo recalcular posteriormente."""
     # Limpar pagamentos pendentes antes de desconsolidar
     from database import crud_pagamentos_pendentes
     ano_ref, mes_ref = map(int, mes.split('-'))
@@ -821,12 +821,12 @@ def desconsolidar_dre(mes: str, db: Session = Depends(get_db)):
     print("✓ {} pagamento(s) pendente(s) removido(s) ao desconsolidar {}".format(qtd_removida, mes))
 
     try:
-        dre = crud_contabilidade.desconsolidar_dre_mes(db, mes)
-        if not dre:
-            raise HTTPException(status_code=404, detail="DRE do mês {} não encontrado".format(mes))
+        previsao = crud_contabilidade.desconsolidar_previsao_operacao_mes(db, mes)
+        if not previsao:
+            raise HTTPException(status_code=404, detail="Previsão da Operação do mês {} não encontrada".format(mes))
         return {
-            "mes": dre.mes,
-            "consolidado": dre.consolidado,
+            "mes": previsao.mes,
+            "consolidado": previsao.consolidado,
             "pagamentos_removidos": qtd_removida,
             "message": "Mês {} desconsolidado com sucesso".format(mes)
         }
@@ -849,16 +849,16 @@ def obter_dashboard_summary(db: Session = Depends(get_db)):
     ano_atual = agora.year
     mes_atual = agora.month
     
-    # Buscar todos os DREs consolidados do ano atual
-    dres = db.query(models.DREMensal).filter(
-        models.DREMensal.mes.like(f"{ano_atual}-%"),
-        models.DREMensal.consolidado == True
+    # Buscar todas as Previsões da Operação consolidadas do ano atual
+    previsoes = db.query(models.PrevisaoOperacaoMensal).filter(
+        models.PrevisaoOperacaoMensal.mes.like(f"{ano_atual}-%"),
+        models.PrevisaoOperacaoMensal.consolidado == True
     ).all()
     
     # Somar lucros líquidos consolidados
-    lucro_liquido_total = sum(dre.lucro_liquido for dre in dres)
-    reserva_total = sum(dre.reserva_10p for dre in dres)
-    pro_labore_total = sum(dre.pro_labore for dre in dres)
+    lucro_liquido_total = sum(previsao.lucro_liquido for previsao in previsoes)
+    reserva_total = sum(previsao.reserva_10p for previsao in previsoes)
+    pro_labore_total = sum(previsao.pro_labore for previsao in previsoes)
     
     # Buscar fundos
     fundo_reserva = crud_contabilidade.get_or_create_fundo(db, "Fundo de Reserva")

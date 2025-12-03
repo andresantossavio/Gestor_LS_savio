@@ -540,108 +540,6 @@ class TempoMedioPorTipo(BaseModel):
     quantidade_concluidas: int
 
 
-# ==================== SCHEMAS PARA SISTEMA DE PROVISÕES ====================
-
-class PagamentoProLaboreCreate(BaseModel):
-    """Schema para registrar pagamento parcial de pró-labore"""
-    mes: int
-    ano: int
-    valor: float
-    data_pagamento: date
-    observacao: Optional[str] = None
-
-class PagamentoINSSCreate(BaseModel):
-    """Schema para registrar pagamento de INSS (patronal + pessoal)"""
-    mes: int
-    ano: int
-    valor: float
-    data_pagamento: date
-    observacao: Optional[str] = None
-
-class PagamentoSimplesCreate(BaseModel):
-    """Schema para registrar pagamento de Simples Nacional"""
-    mes: int
-    ano: int
-    valor: float
-    data_pagamento: date
-    observacao: Optional[str] = None
-
-class PagamentoLucroSocioCreate(BaseModel):
-    """Schema para registrar saque de lucro de um sócio"""
-    mes: int
-    ano: int
-    socio_id: int
-    valor: float
-    data_pagamento: date
-    observacao: Optional[str] = None
-
-class SaldoDisponivel(BaseModel):
-    """Schema para resposta de saldos disponíveis"""
-    previsto: float
-    pago: float
-    disponivel: float
-
-class LucroSocioDisponivel(BaseModel):
-    """Schema para lucro disponível de um sócio"""
-    socio_id: int
-    nome: str
-    previsto: float
-    pago: float
-    disponivel: float
-
-class SaldosDisponiveisMes(BaseModel):
-    """Schema para resposta completa de saldos disponíveis do mês"""
-    mes: int
-    ano: int
-    mes_referencia: str
-    pro_labore: SaldoDisponivel
-    inss: dict  # Contém previsto, patronal_previsto, pessoal_previsto, pago, disponivel
-    simples: SaldoDisponivel
-    fundo_reserva: dict  # Contém previsto
-    lucros_por_socio: List[LucroSocioDisponivel]
-
-class ProvisaoEntradaDetalhada(BaseModel):
-    """Schema para exibir detalhes de uma provisão"""
-    provisao_id: int
-    entrada_id: int
-    data: str
-    cliente: str
-    valor_entrada: float
-    imposto_provisionado: float
-    pro_labore_previsto: float
-    inss_total_previsto: float
-    fundo_reserva_previsto: float
-    distribuicao_socios: List[dict]
-
-
-# ==================== SCHEMAS DE PAGAMENTOS PENDENTES (SISTEMA SIMPLIFICADO) ====================
-
-class PagamentoPendenteBase(BaseModel):
-    tipo: str
-    descricao: str
-    valor: float
-    mes_ref: int
-    ano_ref: int
-    socio_id: Optional[int] = None
-    entrada_id: Optional[int] = None
-
-class PagamentoPendenteCreate(PagamentoPendenteBase):
-    pass
-
-class PagamentoPendente(PagamentoPendenteBase):
-    id: int
-    confirmado: bool
-    data_confirmacao: Optional[date] = None
-    criado_em: datetime
-    atualizado_em: datetime
-
-    class Config:
-        from_attributes = True
-
-class ConfirmarPagamento(BaseModel):
-    data_confirmacao: date
-
-
 # ==================== SCHEMAS DE ATIVOS IMOBILIZADOS ====================
 
 class AtivoImobilizadoBase(BaseModel):
@@ -671,29 +569,6 @@ class AtivoImobilizadoResponse(AtivoImobilizadoBase):
     ativo: bool
     criado_em: datetime
     atualizado_em: datetime
-    criado_por: Optional[str] = None
-
-    class Config:
-        from_attributes = True
-
-
-# ==================== SCHEMAS DE SAQUES DE FUNDOS ====================
-
-class SaqueFundoBase(BaseModel):
-    data: date
-    valor: float
-    tipo_fundo: Literal['reserva', 'investimento']
-    beneficiario_id: int
-    motivo: str
-    comprovante_path: Optional[str] = None
-
-class SaqueFundoCreate(SaqueFundoBase):
-    criado_por: Optional[str] = None
-
-class SaqueFundoResponse(SaqueFundoBase):
-    id: int
-    lancamento_id: Optional[int] = None
-    criado_em: datetime
     criado_por: Optional[str] = None
 
     class Config:
@@ -755,3 +630,69 @@ class OperacaoContabilResponse(BaseModel):
     
     class Config:
         from_attributes = True
+
+
+# ==================== SCHEMAS DE DMPL ====================
+
+class SaldoPLResponse(BaseModel):
+    capital_social: float
+    reservas: float
+    lucros_acumulados: float
+    total: float
+
+
+class MovimentacaoPLResponse(BaseModel):
+    descricao: str
+    capital_social: float
+    reservas: float
+    lucros_acumulados: float
+    total: float
+
+
+class DMPLResponse(BaseModel):
+    ano_inicio: int
+    ano_fim: int
+    saldo_inicial: SaldoPLResponse
+    movimentacoes: List[MovimentacaoPLResponse]
+    saldo_final: SaldoPLResponse
+    total_mutacoes: float
+    variacao_percentual: float
+
+
+# ==================== SCHEMAS DE DFC ====================
+
+class FluxoOperacionalResponse(BaseModel):
+    recebimentos_clientes: float
+    pagamentos_fornecedores: float
+    pagamentos_salarios: float
+    pagamentos_impostos: float
+    outras_receitas: float
+    outras_despesas: float
+    total: float
+
+
+class FluxoInvestimentoResponse(BaseModel):
+    aquisicao_imobilizado: float
+    venda_imobilizado: float
+    aplicacoes_financeiras: float
+    resgate_aplicacoes: float
+    total: float
+
+
+class FluxoFinanciamentoResponse(BaseModel):
+    aumento_capital: float
+    emprestimos_obtidos: float
+    pagamento_emprestimos: float
+    distribuicao_dividendos: float
+    total: float
+
+
+class DFCResponse(BaseModel):
+    mes: str
+    saldo_inicial: float
+    operacionais: FluxoOperacionalResponse
+    investimentos: FluxoInvestimentoResponse
+    financiamentos: FluxoFinanciamentoResponse
+    variacao_liquida: float
+    saldo_final: float
+    variacao_percentual: float

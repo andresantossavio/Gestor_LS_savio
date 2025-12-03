@@ -1,4 +1,4 @@
-from fastapi import FastAPI, Depends, HTTPException, APIRouter, Query, Body, Path
+from fastapi import FastAPI, Depends, HTTPException, APIRouter, Query, Body, Path, Header
 from fastapi.responses import FileResponse
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
@@ -206,9 +206,15 @@ def listar_operacoes(db: Session = Depends(get_db)):
     return crud_contabilidade.listar_operacoes_disponiveis(db)
 
 @api_router.post("/contabilidade/operacoes/executar", response_model=schemas.OperacaoContabilResponse)
-def executar_operacao_contabil(operacao: schemas.OperacaoContabilCreate, db: Session = Depends(get_db)):
+def executar_operacao_contabil(
+    operacao: schemas.OperacaoContabilCreate, 
+    db: Session = Depends(get_db),
+    x_user_id: Optional[str] = Header(None, alias="X-User-Id")
+):
     """Executa uma operação contábil padronizada"""
     try:
+        criado_por_id = int(x_user_id) if x_user_id else None
+        
         operacao_executada = crud_contabilidade.executar_operacao(
             db=db,
             operacao_codigo=operacao.operacao_codigo,
@@ -216,7 +222,7 @@ def executar_operacao_contabil(operacao: schemas.OperacaoContabilCreate, db: Ses
             data=operacao.data,
             descricao=operacao.descricao,
             socio_id=operacao.socio_id,
-            usuario_id=None  # TODO: Implementar autenticação
+            criado_por_id=criado_por_id
         )
         
         # Preparar resposta com lançamentos
@@ -1077,6 +1083,28 @@ def gerar_balanco_patrimonial(
     """Gera o Balanço Patrimonial para o período especificado"""
     balanco = crud_plano_contas.gerar_balanco_patrimonial(db, mes, ano)
     return balanco
+
+
+@api_router.get("/contabilidade/dmpl", response_model=schemas.DMPLResponse)
+def gerar_dmpl(
+    ano_inicio: int = Query(..., ge=2000),
+    ano_fim: int = Query(..., ge=2000),
+    db: Session = Depends(get_db)
+):
+    """Gera a Demonstração das Mutações do Patrimônio Líquido (DMPL)"""
+    dmpl = crud_contabilidade.calcular_dmpl(db, ano_inicio, ano_fim)
+    return dmpl
+
+
+@api_router.get("/contabilidade/dfc", response_model=schemas.DFCResponse)
+def gerar_dfc(
+    mes: int = Query(..., ge=1, le=12),
+    ano: int = Query(..., ge=2000),
+    db: Session = Depends(get_db)
+):
+    """Gera a Demonstração dos Fluxos de Caixa (DFC) pelo método direto"""
+    dfc = crud_contabilidade.calcular_dfc(db, mes, ano)
+    return dfc
 
 
 # ===== SISTEMA DE PROVISÕES E PAGAMENTOS PARCIAIS =====

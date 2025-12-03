@@ -1,177 +1,180 @@
-import React, { useState, useEffect } from 'react';
-import { Link } from 'react-router-dom';
-import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, PieChart, Pie, Cell } from 'recharts';
-import Header from '../components/Header';
+import React, { useEffect, useState } from 'react'
+import { useNavigate } from 'react-router-dom'
+import axios from 'axios'
+import Header from '../components/Header'
 
-const COLORS = ['#0088FE', '#00C49F', '#FFBB28', '#FF8042'];
+const API_BASE_URL = '/api'
 
-// --- Componentes de Widget ---
+export default function Contabilidade() {
+  const navigate = useNavigate()
+  const [kpis, setKpis] = useState({
+    saldoCaixa: null,
+    patrimonioLiquido: null,
+    lucroMes: null,
+    loading: true,
+    error: null
+  })
 
-const Widget = ({ title, children }) => (
-    <div style={{
-        border: '1px solid #ddd',
-        borderRadius: '8px',
-        padding: '20px',
-        backgroundColor: '#f9f9f9',
-        flex: 1,
-        minWidth: '300px'
-    }}>
-        <h3 style={{ marginTop: 0, borderBottom: '2px solid #eee', paddingBottom: '10px' }}>{title}</h3>
-        {children}
-    </div>
-);
+  useEffect(() => {
+    carregarKPIs()
+  }, [])
 
-const Dashboard = () => {
-    const [canRenderCharts, setCanRenderCharts] = useState(true);
-    const [loading, setLoading] = useState(true);
-    const [balancoPatrimonialData, setBalancoPatrimonialData] = useState({ ativo: 0, passivo: 0, patrimonioLiquido: 0 });
-    const [previsaoOperacaoData, setPrevisaoOperacaoData] = useState([]);
-    const [lucrosData, setLucrosData] = useState({ disponiveis: 0, distribuidos: 0, fundoReserva: 0, proLabore: 0 });
-    const [distribuicaoSociosData, setDistribuicaoSociosData] = useState([]);
-    const [ano, setAno] = useState(new Date().getFullYear());
+  async function carregarKPIs() {
+    try {
+      const hoje = new Date()
+      const mes = hoje.getMonth() + 1
+      const ano = hoje.getFullYear()
 
-    useEffect(() => { 
-        // Simple guard: disable charts if container width might be 0
-        try {
-            const el = document.querySelector('main');
-            if (el && el.clientWidth < 300) {
-                setCanRenderCharts(false);
-            } else {
-                setCanRenderCharts(true);
-            }
-        } catch (e) {
-            setCanRenderCharts(false);
-        }
-    }, []);
+      // Buscar saldo caixa e PL do balanço patrimonial
+      const balanco = await axios.get(`${API_BASE_URL}/contabilidade/balanco-patrimonial`, {
+        params: { mes, ano }
+      })
 
-    useEffect(() => {
-        carregarDashboard();
-    }, []);
+      // Conta 1.1.1 = Caixa e Bancos
+      const contaCaixa = balanco.data.ativo.circulante.find(c => c.codigo === '1.1.1')
+      const saldoCaixa = contaCaixa ? contaCaixa.saldo : 0
 
-    const carregarDashboard = async () => {
-        try {
-            setLoading(true);
-            const response = await fetch('/api/contabilidade/dashboard-summary');
-            if (response.ok) {
-                const data = await response.json();
-                setBalancoPatrimonialData(data.balancoPatrimonial);
-                setPrevisaoOperacaoData(data.previsaoOperacaoData);
-                setLucrosData(data.lucros);
-                setDistribuicaoSociosData(data.distribuicaoSocios);
-                setAno(data.ano);
-            } else {
-                console.error('Erro ao carregar dashboard:', response.statusText);
-            }
-        } catch (error) {
-            console.error('Erro ao carregar dashboard:', error);
-        } finally {
-            setLoading(false);
-        }
-    };
+      const patrimonioLiquido = balanco.data.patrimonio_liquido.total
 
-    if (loading) {
-        return (
-            <div style={{ padding: 20 }}>
-                <p>Carregando dados...</p>
-            </div>
-        );
+      // Buscar lucro do mês
+      const lucros = await axios.get(`${API_BASE_URL}/contabilidade/lucros`, {
+        params: { mes, ano }
+      })
+      const lucroMes = lucros.data.lucro_liquido || 0
+
+      setKpis({
+        saldoCaixa,
+        patrimonioLiquido,
+        lucroMes,
+        loading: false,
+        error: null
+      })
+    } catch (error) {
+      console.error('Erro ao carregar KPIs:', error)
+      setKpis(prev => ({
+        ...prev,
+        loading: false,
+        error: 'Erro ao carregar indicadores. Verifique se o plano de contas foi inicializado.'
+      }))
     }
+  }
 
-    return (
-        <div style={{ padding: 20 }}>
+  function formatarMoeda(valor) {
+    if (valor === null || valor === undefined) return 'R$ -'
+    return new Intl.NumberFormat('pt-BR', {
+      style: 'currency',
+      currency: 'BRL'
+    }).format(valor)
+  }
 
-            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '20px' }}>
-                <Widget title="Balanço Patrimonial">
-                    <p><strong>Ativo:</strong> R$ {balancoPatrimonialData.ativo.toFixed(2)}</p>
-                    <p><strong>Passivo:</strong> R$ {balancoPatrimonialData.passivo.toFixed(2)}</p>
-                    <p><strong>Patrimônio Líquido:</strong> R$ {balancoPatrimonialData.patrimonioLiquido.toFixed(2)}</p>
-                </Widget>
-
-                <Widget title="Lucros e Fundos">
-                    <p><strong>Lucro Disponível:</strong> R$ {lucrosData.disponiveis.toFixed(2)}</p>
-                    <p><strong>Lucro Distribuído:</strong> R$ {lucrosData.distribuidos.toFixed(2)}</p>
-                    <p><strong>Fundo de Reserva:</strong> R$ {lucrosData.fundoReserva.toFixed(2)}</p>
-                    <p><strong>Pró-Labore:</strong> R$ {lucrosData.proLabore.toFixed(2)}</p>
-                </Widget>
-
-                <Widget title="Distribuição de Lucros">
-                    {canRenderCharts ? (
-                        <ResponsiveContainer width="100%" height={200}>
-                            <PieChart>
-                                <Pie
-                                    data={distribuicaoSociosData}
-                                    cx="50%"
-                                    cy="50%"
-                                    labelLine={false}
-                                    outerRadius={80}
-                                    fill="#8884d8"
-                                    dataKey="value"
-                                    label={({ name, percent }) => `${name} ${(percent * 100).toFixed(0)}%`}
-                                >
-                                    {distribuicaoSociosData.map((entry, index) => (
-                                        <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
-                                    ))}
-                                </Pie>
-                                <Tooltip formatter={(value) => `R$ ${value.toFixed(2)}`} />
-                            </PieChart>
-                        </ResponsiveContainer>
-                    ) : (
-                        <div style={{ color:'#6b7280', fontSize:13 }}>Gráficos desativados (layout estreito). Conteúdo funcional acima.</div>
-                    )}
-                </Widget>
-
-                <Widget title="Previsão da Operação">
-                    {canRenderCharts ? (
-                        <ResponsiveContainer width="100%" height={300}>
-                            <BarChart data={previsaoOperacaoData} margin={{ top: 20, right: 30, left: 20, bottom: 5 }}>
-                                <CartesianGrid strokeDasharray="3 3" />
-                                <XAxis dataKey="name" />
-                                <YAxis />
-                                <Tooltip formatter={(value) => `R$ ${value.toFixed(2)}`} />
-                                <Legend />
-                                <Bar dataKey="valor" fill="#82ca9d" />
-                            </BarChart>
-                        </ResponsiveContainer>
-                    ) : (
-                        <div style={{ color:'#6b7280', fontSize:13 }}>Gráficos desativados (layout estreito).</div>
-                    )}
-                </Widget>
-            </div>
-        </div>
-    );
-};
-
-const buttonStyle = {
-    padding: '10px 15px',
-    backgroundColor: '#007bff',
-    color: 'white',
-    border: 'none',
-    borderRadius: '5px',
-    textDecoration: 'none',
+  const cardStyle = {
+    padding: '20px',
+    borderRadius: '12px',
+    textAlign: 'center',
     cursor: 'pointer',
-    fontSize: '14px',
-    display: 'inline-block',
-    marginRight: '10px'
-};
+    transition: 'transform 0.2s, box-shadow 0.2s',
+    border: '2px solid transparent'
+  }
 
-const Contabilidade = () => {
-    const anoAtual = new Date().getFullYear();
-    
-    return (
-        <div>
-            <Header title={`Painel de Contabilidade - ${anoAtual}`} />
-            <div style={{ display: 'flex', gap: '10px', marginBottom: '20px', flexWrap: 'wrap' }}>
-                <Link to="/contabilidade/entradas/nova" style={buttonStyle}>+ Nova Entrada</Link>
-                <Link to="/contabilidade/despesas/nova" style={buttonStyle}>+ Nova Despesa</Link>
-                <Link to="/contabilidade/lancamentos" style={buttonStyle}>📋 Gerenciar Lançamentos</Link>
-                <Link to="/contabilidade/socios" style={buttonStyle}>Gerenciar Sócios</Link>
-                <Link to="/contabilidade/previsao-operacao" style={buttonStyle}>📊 Previsão da Operação</Link>
-                <Link to="/contabilidade/pro-labore" style={buttonStyle}>💰 Pró-labore</Link>
-                <Link to="/contabilidade/config-simples" style={buttonStyle}>⚙️ Config Simples</Link>
+  const cardHoverStyle = {
+    transform: 'translateY(-4px)',
+    boxShadow: '0 8px 16px rgba(0,0,0,0.1)'
+  }
+
+  const navCards = [
+    { title: 'Operações Contábeis', path: '/contabilidade/operacoes', color: '#dbeafe', textColor: '#1e3a8a', icon: '⚙️' },
+    { title: 'Balanço Patrimonial', path: '/contabilidade/balanco', color: '#fef3c7', textColor: '#92400e', icon: '📊' },
+    { title: 'DMPL', path: '/contabilidade/dmpl', color: '#e0e7ff', textColor: '#3730a3', icon: '📈' },
+    { title: 'DFC', path: '/contabilidade/dfc', color: '#ddd6fe', textColor: '#5b21b6', icon: '💹' },
+    { title: 'Lucros & Dividendos', path: '/contabilidade/lucros', color: '#d1fae5', textColor: '#065f46', icon: '💰' },
+    { title: 'Pró-labore', path: '/contabilidade/pro-labore', color: '#fce7f3', textColor: '#831843', icon: '👤' },
+    { title: 'Lançamentos', path: '/contabilidade/lancamentos', color: '#e5e7eb', textColor: '#1f2937', icon: '📝' },
+    { title: 'Plano de Contas', path: '/contabilidade/plano-contas', color: '#fed7aa', textColor: '#7c2d12', icon: '📋' },
+    { title: 'Sócios', path: '/contabilidade/socios', color: '#bfdbfe', textColor: '#1e40af', icon: '👥' },
+    { title: 'Config Simples', path: '/contabilidade/config-simples', color: '#c7d2fe', textColor: '#3730a3', icon: '⚙️' }
+  ]
+
+  return (
+    <div className="content">
+      <div className="card">
+        <Header title="Contabilidade" />
+      </div>
+
+      {/* KPIs */}
+      <div className="card">
+        <h3 style={{ marginTop: 0, marginBottom: '20px', color: '#374151' }}>Indicadores Principais</h3>
+        {kpis.loading ? (
+          <p style={{ textAlign: 'center', color: '#6b7280' }}>Carregando...</p>
+        ) : kpis.error ? (
+          <div style={{ padding: '20px', backgroundColor: '#fee2e2', borderRadius: '8px', color: '#991b1b', textAlign: 'center' }}>
+            {kpis.error}
+          </div>
+        ) : (
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '20px' }}>
+            <div style={{ padding: '20px', backgroundColor: '#dcfce7', borderRadius: '12px', textAlign: 'center' }}>
+              <h4 style={{ margin: 0, color: '#14532d', fontSize: '1.8rem', fontWeight: '700' }}>
+                {formatarMoeda(kpis.saldoCaixa)}
+              </h4>
+              <p style={{ margin: '8px 0 0 0', color: '#166534', fontWeight: '600' }}>Saldo em Caixa</p>
             </div>
-            <Dashboard />
+            <div style={{ padding: '20px', backgroundColor: '#dbeafe', borderRadius: '12px', textAlign: 'center' }}>
+              <h4 style={{ margin: 0, color: '#1e3a8a', fontSize: '1.8rem', fontWeight: '700' }}>
+                {formatarMoeda(kpis.patrimonioLiquido)}
+              </h4>
+              <p style={{ margin: '8px 0 0 0', color: '#1e40af', fontWeight: '600' }}>Patrimônio Líquido</p>
+            </div>
+            <div style={{ padding: '20px', backgroundColor: '#fef3c7', borderRadius: '12px', textAlign: 'center' }}>
+              <h4 style={{ margin: 0, color: '#92400e', fontSize: '1.8rem', fontWeight: '700' }}>
+                {formatarMoeda(kpis.lucroMes)}
+              </h4>
+              <p style={{ margin: '8px 0 0 0', color: '#78350f', fontWeight: '600' }}>Lucro do Mês</p>
+            </div>
+          </div>
+        )}
+        <div style={{ marginTop: '20px', textAlign: 'center' }}>
+          <button
+            onClick={carregarKPIs}
+            style={{
+              padding: '10px 20px',
+              backgroundColor: '#3b82f6',
+              color: 'white',
+              border: 'none',
+              borderRadius: '8px',
+              cursor: 'pointer',
+              fontWeight: '600'
+            }}
+          >
+            🔄 Atualizar
+          </button>
         </div>
-    );
-};
+      </div>
 
-export default Contabilidade;
+      {/* Navigation Cards */}
+      <div className="card">
+        <h3 style={{ marginTop: 0, marginBottom: '20px', color: '#374151' }}>Módulos</h3>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '16px' }}>
+          {navCards.map((card, idx) => (
+            <div
+              key={idx}
+              style={{ ...cardStyle, backgroundColor: card.color }}
+              onClick={() => navigate(card.path)}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.transform = cardHoverStyle.transform
+                e.currentTarget.style.boxShadow = cardHoverStyle.boxShadow
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.transform = 'translateY(0)'
+                e.currentTarget.style.boxShadow = 'none'
+              }}
+            >
+              <div style={{ fontSize: '2.5rem', marginBottom: '8px' }}>{card.icon}</div>
+              <p style={{ margin: 0, color: card.textColor, fontWeight: '700', fontSize: '0.95rem' }}>
+                {card.title}
+              </p>
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  )
+}

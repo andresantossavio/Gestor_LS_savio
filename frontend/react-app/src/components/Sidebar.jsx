@@ -10,9 +10,7 @@ const menuItems = [
         icon: '💰',
         subItems: [
             { name: 'Painel Contábil', to: '/contabilidade', icon: '📊' },
-            { name: 'Pagamentos Pendentes', to: '/contabilidade/pagamentos-pendentes', icon: '💳' },
             { name: 'Plano de Contas', to: '/contabilidade/plano-contas', icon: '📑' },
-            { name: 'Lançamentos Contábeis', to: '/contabilidade/lancamentos-contabeis', icon: '📝' },
             { name: 'Balanço Patrimonial', to: '/contabilidade/balanco', icon: '📈' },
             { name: 'DMPL', to: '/contabilidade/dmpl', icon: '📉' },
             { name: 'DFC', to: '/contabilidade/dfc', icon: '💵' },

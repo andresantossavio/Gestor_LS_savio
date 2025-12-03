@@ -177,7 +177,37 @@ class Socio(SocioBase):
 
 
 # Aportes de Capital
-class AporteCapitalCreate(BaseModel):
+from typing import Literal
+
+class AporteCapitalBase(BaseModel):
+    data: date
+    valor: float
+    tipo_aporte: Literal['dinheiro', 'bens', 'servicos', 'retirada']
+    descricao: Optional[str] = None
+
+class AporteCapitalCreate(AporteCapitalBase):
+    pass
+
+class AporteCapitalUpdate(BaseModel):
+    data: Optional[date] = None
+    valor: Optional[float] = None
+    tipo_aporte: Optional[Literal['dinheiro', 'bens', 'servicos', 'retirada']] = None
+    descricao: Optional[str] = None
+
+class AporteCapitalResponse(AporteCapitalBase):
+    id: int
+    socio_id: int
+    criado_em: datetime
+    atualizado_em: Optional[datetime] = None
+    
+    class Config:
+        from_attributes = True
+
+class RelatorioIntegralizacao(BaseModel):
+    socios: List[dict]
+    total_geral: float
+
+class AporteCapitalOldCreate(BaseModel):
     valor: float
     data: date
     forma: Literal['dinheiro', 'bens']
@@ -610,3 +640,61 @@ class PagamentoPendente(PagamentoPendenteBase):
 
 class ConfirmarPagamento(BaseModel):
     data_confirmacao: date
+
+
+# ==================== SCHEMAS DE ATIVOS IMOBILIZADOS ====================
+
+class AtivoImobilizadoBase(BaseModel):
+    descricao: str
+    categoria: str
+    valor_aquisicao: float
+    data_aquisicao: date
+    elegivel_depreciacao: bool = True
+    conta_ativo_id: Optional[int] = None
+    observacoes: Optional[str] = None
+
+class AtivoImobilizadoCreate(AtivoImobilizadoBase):
+    criado_por: Optional[str] = None
+
+class AtivoImobilizadoUpdate(BaseModel):
+    descricao: Optional[str] = None
+    categoria: Optional[str] = None
+    valor_aquisicao: Optional[float] = None
+    data_aquisicao: Optional[date] = None
+    elegivel_depreciacao: Optional[bool] = None
+    conta_ativo_id: Optional[int] = None
+    observacoes: Optional[str] = None
+    ativo: Optional[bool] = None
+
+class AtivoImobilizadoResponse(AtivoImobilizadoBase):
+    id: int
+    ativo: bool
+    criado_em: datetime
+    atualizado_em: datetime
+    criado_por: Optional[str] = None
+
+    class Config:
+        from_attributes = True
+
+
+# ==================== SCHEMAS DE SAQUES DE FUNDOS ====================
+
+class SaqueFundoBase(BaseModel):
+    data: date
+    valor: float
+    tipo_fundo: Literal['reserva', 'investimento']
+    beneficiario_id: int
+    motivo: str
+    comprovante_path: Optional[str] = None
+
+class SaqueFundoCreate(SaqueFundoBase):
+    criado_por: Optional[str] = None
+
+class SaqueFundoResponse(SaqueFundoBase):
+    id: int
+    lancamento_id: Optional[int] = None
+    criado_em: datetime
+    criado_por: Optional[str] = None
+
+    class Config:
+        from_attributes = True

@@ -503,19 +503,9 @@ def registrar_fechamento_resultado(
         aceita_lancamento=True,
     )
 
-    # Remover SEMPRE qualquer fechamento existente para este mês (idempotência)
-    # Isso garante que não haverá duplicatas mesmo se a função for chamada múltiplas vezes
-    deletados = db.query(models.LancamentoContabil).filter(
-        models.LancamentoContabil.referencia_mes == mes,
-        models.LancamentoContabil.tipo_lancamento == 'fechamento_resultado'
-    ).delete(synchronize_session=False)
-    
-    if deletados > 0:
-        db.commit()
-        print(f"[INFO] Removidos {deletados} lançamentos de fechamento duplicados para {mes}")
-
     historico = f"Fechamento do resultado do mês {mes}"
 
+    # Determinar contas de débito e crédito conforme sinal do resultado
     if valor_resultado > 0:
         conta_debito_id = conta_tecnica.id
         conta_credito_id = conta_lucros.id
@@ -525,21 +515,41 @@ def registrar_fechamento_resultado(
         conta_credito_id = conta_tecnica.id
         valor = abs(valor_resultado)
 
-    lanc = models.LancamentoContabil(
-        data=data_lcto,
-        conta_debito_id=conta_debito_id,
-        conta_credito_id=conta_credito_id,
-        valor=valor,
-        historico=historico,
-        automatico=True,
-        editavel=False,
-        tipo_lancamento='fechamento_resultado',
-        referencia_mes=mes,
-    )
-    db.add(lanc)
-    db.commit()
-    db.refresh(lanc)
-    return lanc
+    # NOVO: Buscar lançamento existente ao invés de deletar (padrão UPDATE)
+    existente = db.query(models.LancamentoContabil).filter(
+        models.LancamentoContabil.referencia_mes == mes,
+        models.LancamentoContabil.tipo_lancamento == 'fechamento_resultado'
+    ).first()
+
+    if existente:
+        # UPDATE: atualizar valores (incluindo contas se lucro mudou de sinal)
+        from datetime import datetime
+        existente.valor = valor
+        existente.historico = historico
+        existente.conta_debito_id = conta_debito_id
+        existente.conta_credito_id = conta_credito_id
+        existente.data = data_lcto
+        existente.editado_em = datetime.utcnow()
+        db.commit()
+        db.refresh(existente)
+        return existente
+    else:
+        # INSERT: criar novo lançamento
+        lanc = models.LancamentoContabil(
+            data=data_lcto,
+            conta_debito_id=conta_debito_id,
+            conta_credito_id=conta_credito_id,
+            valor=valor,
+            historico=historico,
+            automatico=True,
+            editavel=False,
+            tipo_lancamento='fechamento_resultado',
+            referencia_mes=mes,
+        )
+        db.add(lanc)
+        db.commit()
+        db.refresh(lanc)
+        return lanc
 
 def lancar_entrada_honorarios(db: Session, entrada_id: int) -> List[models.LancamentoContabil]:
     """
@@ -698,13 +708,55 @@ def gerar_balanco_patrimonial(db: Session, mes: int, ano: int):
     """
     Gera o Balanço Patrimonial com hierarquia de contas.
     Retorna estrutura com Ativo, Passivo e Patrimônio Líquido.
+    
+    Se o mês NÃO está consolidado, mostra valores de impostos em tempo real
+    (provisionados mas não pagos) nas contas 2.1.4 (Simples) e 2.1.5 (INSS).
     """
     from datetime import date as date_type
+    from database import crud_contabilidade
     
     # Data limite para cálculo dos saldos (último dia do mês)
     import calendar
     ultimo_dia = calendar.monthrange(ano, mes)[1]
     data_fim = date_type(ano, mes, ultimo_dia)
+    mes_str = f"{ano}-{mes:02d}"
+    
+    # Verificar se o mês está consolidado
+    dre_mes = db.query(models.DREMensal).filter(models.DREMensal.mes == mes_str).first()
+    mes_consolidado = dre_mes and dre_mes.consolidado
+    
+    # Se não consolidado, calcular impostos previstos em tempo real
+    ajustes_tempo_real = {}
+    alertas = []
+    if not mes_consolidado:
+        impostos_previstos = crud_contabilidade.calcular_impostos_previstos_mes(db, mes_str)
+        
+        # Buscar pagamentos já feitos no mês (se houver)
+        pagamentos_simples = db.query(models.LancamentoContabil).filter(
+            models.LancamentoContabil.tipo_lancamento == 'pagamento_simples',
+            models.LancamentoContabil.referencia_mes == mes_str
+        ).all()
+        total_pago_simples = sum(lanc.valor for lanc in pagamentos_simples)
+        
+        pagamentos_inss = db.query(models.LancamentoContabil).filter(
+            models.LancamentoContabil.tipo_lancamento == 'pagamento_inss',
+            models.LancamentoContabil.referencia_mes == mes_str
+        ).all()
+        total_pago_inss = sum(lanc.valor for lanc in pagamentos_inss)
+        
+        # Calcular depreciação prevista do mês
+        depreciacao_prevista = crud_contabilidade.calcular_depreciacao_prevista_mes(db, mes, ano)
+        
+        # Calcular saldos líquidos (provisionado - pago)
+        ajustes_tempo_real = {
+            '2.1.4': impostos_previstos['imposto_simples'] - total_pago_simples,  # Simples a Pagar
+            '2.1.5': (impostos_previstos['inss_patronal'] + impostos_previstos['inss_pessoal']) - total_pago_inss,  # INSS a Pagar
+            '5.2.9': depreciacao_prevista['despesa'],      # Despesa de Depreciação
+            '1.2.9': depreciacao_prevista['acumulada']     # Depreciação Acumulada (redutora)
+        }
+        
+        # Gerar alertas contextuais
+        alertas = crud_contabilidade.gerar_alertas(db, mes, ano, ajustes_tempo_real)
     
     def construir_hierarquia(conta_pai_codigo: str, inverter_sinal: bool = False):
         """Constrói hierarquia recursiva de contas
@@ -723,7 +775,18 @@ def gerar_balanco_patrimonial(db: Session, mes: int, ano: int):
         contas_dict = {}
         for c in contas:
             saldo_base = calcular_saldo_conta(db, c.id, data_fim=data_fim)
-            saldo_final = -saldo_base if inverter_sinal else saldo_base
+            
+            # AJUSTE TEMPO REAL: Se mês não consolidado, usar valores provisionados para 2.1.4 e 2.1.5
+            if not mes_consolidado and c.codigo in ajustes_tempo_real:
+                saldo_base = ajustes_tempo_real[c.codigo]
+            
+            # Para contas do PL (grupo 3) com natureza DEVEDORA (contas redutoras como 3.4.1),
+            # inverter o sinal para que subtraiam do PL ao invés de somar
+            if conta_pai_codigo == "3" and c.natureza and c.natureza.upper() in ("D", "DEVEDORA"):
+                saldo_final = -saldo_base
+            else:
+                saldo_final = -saldo_base if inverter_sinal else saldo_base
+            
             contas_dict[c.codigo] = {
                 "id": c.id,
                 "codigo": c.codigo,
@@ -762,10 +825,12 @@ def gerar_balanco_patrimonial(db: Session, mes: int, ano: int):
                 if not grupo["aceita_lancamento"]:
                     grupo["saldo"] = sum(sub["saldo"] for sub in grupo["subgrupos"])
     
-    # Gerar estruturas (Passivo e PL com sinal invertido para apresentação)
+    # Gerar estruturas usando sinal natural do razão
+    # Ativo: natureza devedora (positivo)
+    # Passivo/PL: natureza credora (negativo no razão, mas apresentado como positivo)
     ativo = construir_hierarquia("1", inverter_sinal=False)
-    passivo = construir_hierarquia("2", inverter_sinal=True)
-    patrimonio_liquido = construir_hierarquia("3", inverter_sinal=True)
+    passivo = construir_hierarquia("2", inverter_sinal=False)
+    patrimonio_liquido = construir_hierarquia("3", inverter_sinal=False)
     
     # Calcular resultado do período (Receitas - Despesas)
     receitas = construir_hierarquia("4", inverter_sinal=False)
@@ -781,29 +846,9 @@ def gerar_balanco_patrimonial(db: Session, mes: int, ano: int):
                 total += calcular_saldo_grupo(grupo["subgrupos"])
         return total
     
-    resultado_periodo = calcular_saldo_grupo(receitas) - calcular_saldo_grupo(despesas)
-
-    # Somente adicionar o resultado aos Lucros Acumulados (3.3)
-    # se NÃO houver lançamento de fechamento do resultado para o mês.
-    # Assim evitamos dupla contagem quando já creditamos 3.3 via razão.
-    existe_fechamento = db.query(models.LancamentoContabil).filter(
-        models.LancamentoContabil.tipo_lancamento == 'fechamento_resultado',
-        models.LancamentoContabil.referencia_mes == f"{ano}-{str(mes).zfill(2)}"
-    ).first() is not None
-
-    def adicionar_resultado_lucros(grupos, resultado):
-        """Adiciona o resultado do período na conta de Lucros Acumulados"""
-        for grupo in grupos:
-            if grupo["codigo"] == "3.3":
-                grupo["saldo"] += resultado
-                return True
-            if grupo["subgrupos"]:
-                if adicionar_resultado_lucros(grupo["subgrupos"], resultado):
-                    return True
-        return False
-
-    if not existe_fechamento:
-        adicionar_resultado_lucros(patrimonio_liquido, resultado_periodo)
+    # Resultado do período já está registrado no razão via fechamento_resultado
+    # A conta 3.3 (Lucros Acumulados) já contém o saldo correto via lançamentos contábeis
+    # Não é necessário calcular ou adicionar manualmente
     
     # Atualizar saldos das contas sintéticas
     atualizar_saldos_sinteticos(ativo)
@@ -816,7 +861,6 @@ def gerar_balanco_patrimonial(db: Session, mes: int, ano: int):
         total = 0.0
         for grupo in grupos:
             # Apenas somar os saldos do primeiro nível (grupos raiz), pois sintéticas já agregaram seus filhos
-            # Contas de natureza devedora dentro do PL (ex: 3.4 Lucros Distribuídos) já tem saldo negativo no cálculo
             total += grupo["saldo"]
         return total
     
@@ -824,7 +868,13 @@ def gerar_balanco_patrimonial(db: Session, mes: int, ano: int):
     total_passivo = calcular_total_recursivo(passivo)
     total_pl = calcular_total_recursivo(patrimonio_liquido)
     
-    return {
+    # O cálculo de saldo já considera a natureza da conta:
+    # - Ativo (Devedora): Débitos - Créditos = positivo quando há saldo devedor
+    # - Passivo/PL (Credora): Créditos - Débitos = positivo quando há saldo credor
+    # Ambos aparecem como positivos no balanço patrimonial
+    # A equação contábil é: Ativo = Passivo + PL
+    
+    resultado = {
         "ativo": ativo,
         "passivo": passivo,
         "patrimonioLiquido": patrimonio_liquido,
@@ -833,8 +883,22 @@ def gerar_balanco_patrimonial(db: Session, mes: int, ano: int):
             "passivo": total_passivo,
             "patrimonioLiquido": total_pl,
             "passivoMaisPl": total_passivo + total_pl
+        },
+        "metadata": {
+            "mes": mes_str,
+            "consolidado": mes_consolidado,
+            "ajustesTempoReal": not mes_consolidado,
+            "ajustesAplicados": [
+                {"conta": "2.1.4", "valor": ajustes_tempo_real.get("2.1.4", 0), "fonte": "calcular_impostos_previstos_mes", "descricao": "Simples Nacional a Pagar"},
+                {"conta": "2.1.5", "valor": ajustes_tempo_real.get("2.1.5", 0), "fonte": "calcular_impostos_previstos_mes", "descricao": "INSS a Pagar"},
+                {"conta": "5.2.9", "valor": ajustes_tempo_real.get("5.2.9", 0), "fonte": "calcular_depreciacao_prevista_mes", "descricao": "Despesa de Depreciação"},
+                {"conta": "1.2.9", "valor": ajustes_tempo_real.get("1.2.9", 0), "fonte": "calcular_depreciacao_prevista_mes", "descricao": "Depreciação Acumulada (-)"}
+            ] if not mes_consolidado else [],
+            "alertas": alertas
         }
     }
+    
+    return resultado
 
 
 # ===== LANÇAMENTOS AUTOMÁTICOS PARA PAGAMENTOS PENDENTES =====

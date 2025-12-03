@@ -150,18 +150,54 @@ def deletar_socio(socio_id: int, db: Session = Depends(get_db)):
     return {"status": "ok"}
 
 # --- Aportes de Capital ---
-@api_router.post("/contabilidade/socios/{socio_id}/aportes")
-def registrar_aporte(socio_id: int, aporte: schemas.AporteCapitalCreate, db: Session = Depends(get_db)):
+@api_router.post("/contabilidade/socios/{socio_id}/aportes", response_model=schemas.AporteCapitalResponse)
+def criar_aporte(socio_id: int, aporte: schemas.AporteCapitalCreate, db: Session = Depends(get_db)):
     try:
-        return crud_contabilidade.registrar_aporte_capital(
+        return crud_contabilidade.create_aporte_capital(
             db=db,
             socio_id=socio_id,
-            valor=aporte.valor,
             data=aporte.data,
-            forma=aporte.forma
+            valor=aporte.valor,
+            tipo_aporte=aporte.tipo_aporte,
+            descricao=aporte.descricao
         )
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
+
+@api_router.get("/contabilidade/socios/{socio_id}/aportes", response_model=List[schemas.AporteCapitalResponse])
+def listar_aportes_socio(socio_id: int, db: Session = Depends(get_db)):
+    return crud_contabilidade.get_aportes_socio(db, socio_id)
+
+@api_router.get("/contabilidade/aportes/{aporte_id}", response_model=schemas.AporteCapitalResponse)
+def obter_aporte(aporte_id: int, db: Session = Depends(get_db)):
+    aporte = crud_contabilidade.get_aporte(db, aporte_id)
+    if not aporte:
+        raise HTTPException(status_code=404, detail="Aporte não encontrado")
+    return aporte
+
+@api_router.put("/contabilidade/aportes/{aporte_id}", response_model=schemas.AporteCapitalResponse)
+def atualizar_aporte(aporte_id: int, aporte: schemas.AporteCapitalUpdate, db: Session = Depends(get_db)):
+    update_data = aporte.dict(exclude_unset=True)
+    db_aporte = crud_contabilidade.update_aporte_capital(db, aporte_id, update_data)
+    if not db_aporte:
+        raise HTTPException(status_code=404, detail="Aporte não encontrado")
+    return db_aporte
+
+@api_router.delete("/contabilidade/aportes/{aporte_id}")
+def deletar_aporte(aporte_id: int, db: Session = Depends(get_db)):
+    sucesso = crud_contabilidade.delete_aporte_capital(db, aporte_id)
+    if not sucesso:
+        raise HTTPException(status_code=404, detail="Aporte não encontrado")
+    return {"status": "ok"}
+
+@api_router.get("/contabilidade/relatorio-integralizacao", response_model=schemas.RelatorioIntegralizacao)
+def obter_relatorio_integralizacao(db: Session = Depends(get_db)):
+    return crud_contabilidade.get_relatorio_integralizacao(db)
+
+@api_router.get("/contabilidade/validar-balanco")
+def validar_balanco_contabil(db: Session = Depends(get_db)):
+    """Valida a equação contábil e integridade dos dados"""
+    return crud_contabilidade.validar_equacao_contabil(db)
 
 # --- Entradas ---
 @api_router.get("/contabilidade/entradas", response_model=List[schemas.Entrada])
@@ -170,15 +206,21 @@ def listar_entradas(skip: int = 0, limit: int = 100, db: Session = Depends(get_d
 
 @api_router.post("/contabilidade/entradas", response_model=schemas.Entrada)
 def criar_entrada(entrada: schemas.EntradaCreate, db: Session = Depends(get_db)):
-    nova_entrada = crud_contabilidade.create_entrada(db, entrada)
-    return nova_entrada
+    try:
+        nova_entrada = crud_contabilidade.create_entrada(db, entrada)
+        return nova_entrada
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
 
 @api_router.put("/contabilidade/entradas/{entrada_id}", response_model=schemas.Entrada)
 def atualizar_entrada(entrada_id: int, entrada: schemas.EntradaCreate, db: Session = Depends(get_db)):
-    db_entrada = crud_contabilidade.update_entrada(db, entrada_id, entrada)
-    if not db_entrada:
-        raise HTTPException(status_code=404, detail="Entrada não encontrada")
-    return db_entrada
+    try:
+        db_entrada = crud_contabilidade.update_entrada(db, entrada_id, entrada)
+        if not db_entrada:
+            raise HTTPException(status_code=404, detail="Entrada não encontrada")
+        return db_entrada
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
 
 @api_router.delete("/contabilidade/entradas/{entrada_id}")
 def deletar_entrada(entrada_id: int, db: Session = Depends(get_db)):
@@ -186,8 +228,11 @@ def deletar_entrada(entrada_id: int, db: Session = Depends(get_db)):
     if not entrada_temp:
         raise HTTPException(status_code=404, detail="Entrada não encontrada")
     
-    crud_contabilidade.delete_entrada(db, entrada_id)
-    return {"status": "ok"}
+    try:
+        crud_contabilidade.delete_entrada(db, entrada_id)
+        return {"status": "ok"}
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
 
 # --- Despesas ---
 @api_router.get("/contabilidade/despesas", response_model=List[schemas.Despesa])
@@ -196,15 +241,21 @@ def listar_despesas(skip: int = 0, limit: int = 100, db: Session = Depends(get_d
 
 @api_router.post("/contabilidade/despesas", response_model=schemas.Despesa)
 def criar_despesa(despesa: schemas.DespesaCreate, db: Session = Depends(get_db)):
-    nova_despesa = crud_contabilidade.create_despesa(db, despesa)
-    return nova_despesa
+    try:
+        nova_despesa = crud_contabilidade.create_despesa(db, despesa)
+        return nova_despesa
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
 
 @api_router.put("/contabilidade/despesas/{despesa_id}", response_model=schemas.Despesa)
 def atualizar_despesa(despesa_id: int, despesa: schemas.DespesaCreate, db: Session = Depends(get_db)):
-    db_despesa = crud_contabilidade.update_despesa(db, despesa_id, despesa)
-    if not db_despesa:
-        raise HTTPException(status_code=404, detail="Despesa não encontrada")
-    return db_despesa
+    try:
+        db_despesa = crud_contabilidade.update_despesa(db, despesa_id, despesa)
+        if not db_despesa:
+            raise HTTPException(status_code=404, detail="Despesa não encontrada")
+        return db_despesa
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
 
 @api_router.delete("/contabilidade/despesas/{despesa_id}")
 def deletar_despesa(despesa_id: int, db: Session = Depends(get_db)):
@@ -212,8 +263,11 @@ def deletar_despesa(despesa_id: int, db: Session = Depends(get_db)):
     if not despesa_temp:
         raise HTTPException(status_code=404, detail="Despesa não encontrada")
     
-    crud_contabilidade.delete_despesa(db, despesa_id)
-    return {"status": "ok"}
+    try:
+        crud_contabilidade.delete_despesa(db, despesa_id)
+        return {"status": "ok"}
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
 
 # --- DRE ---
 @api_router.get("/contabilidade/dre")
@@ -637,8 +691,10 @@ def obter_dashboard_summary(db: Session = Depends(get_db)):
     from sqlalchemy import func
     from datetime import datetime
     
-    # Obter ano atual
-    ano_atual = datetime.now().year
+    # Obter ano e mês atuais
+    agora = datetime.now()
+    ano_atual = agora.year
+    mes_atual = agora.month
     
     # Buscar todos os DREs consolidados do ano atual
     dres = db.query(models.DREMensal).filter(
@@ -667,10 +723,11 @@ def obter_dashboard_summary(db: Session = Depends(get_db)):
             perc = perc / 100.0
         saldo_socios += lucro_distribuivel * perc
     
-    # Balanço Patrimonial
-    ativo = saldo_socios + fundo_reserva.saldo + fundo_investimento.saldo
-    passivo = 0.0  # Simplificado - não há passivos no sistema atual
-    patrimonio_liquido = ativo - passivo
+    # Balanço Patrimonial - usar função do sistema ao invés de cálculo manual
+    balanco = crud_plano_contas.gerar_balanco_patrimonial(db, mes_atual, ano_atual)
+    ativo = balanco["totais"]["ativo"]
+    passivo = balanco["totais"]["passivo"]
+    patrimonio_liquido = balanco["totais"]["patrimonioLiquido"]
     
     # DRE Data (para gráfico)
     receita_bruta_total = sum(dre.receita_bruta for dre in dres)
@@ -2294,6 +2351,111 @@ def gerar_pendencias_mes_endpoint(
         }
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
+
+
+# ========== ENDPOINTS DE ATIVOS IMOBILIZADOS ==========
+
+@api_router.post("/contabilidade/ativos-imobilizados", response_model=schemas.AtivoImobilizadoResponse)
+def criar_ativo_imobilizado(
+    ativo: schemas.AtivoImobilizadoCreate,
+    db: Session = Depends(get_db)
+):
+    """Cria um novo ativo imobilizado"""
+    try:
+        ativo_dict = ativo.model_dump()
+        return crud_contabilidade.create_ativo_imobilizado(db, ativo_dict)
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+@api_router.get("/contabilidade/ativos-imobilizados", response_model=List[schemas.AtivoImobilizadoResponse])
+def listar_ativos_imobilizados(
+    apenas_ativos: bool = True,
+    db: Session = Depends(get_db)
+):
+    """Lista todos os ativos imobilizados"""
+    return crud_contabilidade.listar_ativos_imobilizados(db, apenas_ativos=apenas_ativos)
+
+
+@api_router.get("/contabilidade/ativos-imobilizados/{ativo_id}", response_model=schemas.AtivoImobilizadoResponse)
+def obter_ativo_imobilizado(
+    ativo_id: int,
+    db: Session = Depends(get_db)
+):
+    """Obtém um ativo imobilizado pelo ID"""
+    ativo = crud_contabilidade.get_ativo_imobilizado(db, ativo_id)
+    if not ativo:
+        raise HTTPException(status_code=404, detail="Ativo não encontrado")
+    return ativo
+
+
+@api_router.put("/contabilidade/ativos-imobilizados/{ativo_id}", response_model=schemas.AtivoImobilizadoResponse)
+def atualizar_ativo_imobilizado(
+    ativo_id: int,
+    ativo: schemas.AtivoImobilizadoUpdate,
+    db: Session = Depends(get_db)
+):
+    """Atualiza um ativo imobilizado"""
+    ativo_dict = {k: v for k, v in ativo.model_dump().items() if v is not None}
+    resultado = crud_contabilidade.update_ativo_imobilizado(db, ativo_id, ativo_dict)
+    if not resultado:
+        raise HTTPException(status_code=404, detail="Ativo não encontrado")
+    return resultado
+
+
+@api_router.delete("/contabilidade/ativos-imobilizados/{ativo_id}")
+def desativar_ativo_imobilizado(
+    ativo_id: int,
+    db: Session = Depends(get_db)
+):
+    """Desativa um ativo imobilizado (soft delete)"""
+    sucesso = crud_contabilidade.delete_ativo_imobilizado(db, ativo_id)
+    if not sucesso:
+        raise HTTPException(status_code=404, detail="Ativo não encontrado")
+    return {"status": "ok", "mensagem": "Ativo desativado com sucesso"}
+
+
+# ========== ENDPOINTS DE SAQUES DE FUNDOS ==========
+
+@api_router.post("/contabilidade/saques-fundo", response_model=schemas.SaqueFundoResponse)
+def registrar_saque_fundo(
+    saque: schemas.SaqueFundoCreate,
+    db: Session = Depends(get_db)
+):
+    """Registra um saque do fundo de reserva ou investimento"""
+    try:
+        saque_dict = saque.model_dump()
+        return crud_contabilidade.registrar_saque_fundo(db, saque_dict)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@api_router.get("/contabilidade/saques-fundo", response_model=List[schemas.SaqueFundoResponse])
+def listar_saques_fundo(
+    tipo_fundo: Optional[str] = None,
+    beneficiario_id: Optional[int] = None,
+    db: Session = Depends(get_db)
+):
+    """Lista saques de fundos com filtros opcionais"""
+    return crud_contabilidade.listar_saques_fundo(
+        db, 
+        tipo_fundo=tipo_fundo,
+        beneficiario_id=beneficiario_id
+    )
+
+
+@api_router.get("/contabilidade/saques-fundo/{saque_id}", response_model=schemas.SaqueFundoResponse)
+def obter_saque_fundo(
+    saque_id: int,
+    db: Session = Depends(get_db)
+):
+    """Obtém um saque de fundo pelo ID"""
+    saque = crud_contabilidade.get_saque_fundo(db, saque_id)
+    if not saque:
+        raise HTTPException(status_code=404, detail="Saque não encontrado")
+    return saque
 
 
 # Serve frontend static files from the repository root `frontend/` directory

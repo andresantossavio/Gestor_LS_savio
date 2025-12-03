@@ -273,6 +273,26 @@ class Socio(Base):
     entradas = relationship("EntradaSocio", back_populates="socio")
     usuario = relationship("Usuario", foreign_keys=[usuario_id])
     pagamentos_pendentes = relationship("PagamentoPendente", back_populates="socio")
+    aportes = relationship("AporteCapital", back_populates="socio", cascade="all, delete-orphan")
+    saques_fundos = relationship("SaqueFundo", back_populates="beneficiario")
+
+class AporteCapital(Base):
+    __tablename__ = "aportes_capital"
+    __table_args__ = (
+        Index('idx_aporte_socio_data', 'socio_id', 'data'),
+    )
+
+    id = Column(Integer, primary_key=True, index=True)
+    socio_id = Column(Integer, ForeignKey("socios.id"), nullable=False)
+    data = Column(Date, nullable=False, index=True)
+    valor = Column(Float, nullable=False)
+    tipo_aporte = Column(String(20), nullable=False)  # 'dinheiro', 'bens', 'servicos', 'retirada'
+    descricao = Column(String(500), nullable=True)
+    criado_em = Column(DateTime, default=datetime.utcnow)
+    atualizado_em = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    
+    # Relationships
+    socio = relationship("Socio", back_populates="aportes")
 
 class ConfiguracaoContabil(Base):
     __tablename__ = "configuracao_contabil"
@@ -529,3 +549,57 @@ class PagamentoPendente(Base):
     # Relationships
     socio = relationship("Socio", back_populates="pagamentos_pendentes")
     entrada = relationship("Entrada")
+
+
+class AtivoImobilizado(Base):
+    """Ativos imobilizados sujeitos à depreciação"""
+    __tablename__ = "ativos_imobilizados"
+    __table_args__ = (
+        Index('idx_ativo_categoria', 'categoria'),
+        Index('idx_ativo_ativo', 'ativo'),
+        Index('idx_ativo_elegivel', 'elegivel_depreciacao'),
+    )
+
+    id = Column(Integer, primary_key=True, index=True)
+    descricao = Column(String(255), nullable=False)  # Ex: "Notebook Dell Inspiron"
+    categoria = Column(String(50), nullable=False)  # equipamentos, moveis, veiculos, computadores, etc
+    valor_aquisicao = Column(Float, nullable=False)  # Valor original de compra
+    data_aquisicao = Column(Date, nullable=False)  # Data da aquisição
+    elegivel_depreciacao = Column(Boolean, default=True, nullable=False)  # Se deve depreciar
+    conta_ativo_id = Column(Integer, ForeignKey("plano_de_contas.id"), nullable=True)  # Conta no plano de contas (1.2.x)
+    ativo = Column(Boolean, default=True, nullable=False)  # Se ainda está em uso
+    observacoes = Column(Text, nullable=True)  # Notas adicionais
+    
+    # Metadata
+    criado_em = Column(DateTime, default=datetime.utcnow, nullable=False)
+    atualizado_em = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
+    
+    # Relationships
+    conta_ativo = relationship("PlanoDeContas", foreign_keys=[conta_ativo_id])
+
+
+class SaqueFundo(Base):
+    """Registro de saques dos fundos de reserva ou investimento"""
+    __tablename__ = "saques_fundos"
+    __table_args__ = (
+        Index('idx_saque_tipo', 'tipo_fundo'),
+        Index('idx_saque_data', 'data'),
+        Index('idx_saque_beneficiario', 'beneficiario_id'),
+    )
+
+    id = Column(Integer, primary_key=True, index=True)
+    data = Column(Date, nullable=False)  # Data do saque
+    valor = Column(Float, nullable=False)  # Valor sacado
+    tipo_fundo = Column(String(20), nullable=False)  # 'reserva' ou 'investimento'
+    beneficiario_id = Column(Integer, ForeignKey("socios.id"), nullable=False)  # Quem recebeu
+    motivo = Column(Text, nullable=False)  # Justificativa do saque
+    comprovante_path = Column(String(500), nullable=True)  # Caminho do arquivo de comprovante
+    lancamento_id = Column(Integer, ForeignKey("lancamentos_contabeis.id"), nullable=True)  # Lançamento contábil gerado
+    
+    # Metadata
+    criado_em = Column(DateTime, default=datetime.utcnow, nullable=False)
+    criado_por = Column(String(80), nullable=True)  # Login do usuário que registrou
+    
+    # Relationships
+    beneficiario = relationship("Socio", back_populates="saques_fundos")
+    lancamento = relationship("LancamentoContabil")

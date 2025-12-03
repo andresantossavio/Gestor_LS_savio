@@ -27,6 +27,9 @@ def inicializar_plano_contas(db: Session):
         {"codigo": "1.2.1.1", "descricao": "Equipamentos e Móveis", "tipo": "Ativo", "natureza": "Devedora", "nivel": 4, "aceita_lancamento": True, "pai_codigo": "1.2.1"},
         {"codigo": "1.2.1.2", "descricao": "(-) Depreciação Acumulada", "tipo": "Ativo", "natureza": "Credora", "nivel": 4, "aceita_lancamento": True, "pai_codigo": "1.2.1"},
         
+        {"codigo": "1.2.2", "descricao": "Intangível", "tipo": "Ativo", "natureza": "Devedora", "nivel": 3, "aceita_lancamento": False, "pai_codigo": "1.2"},
+        {"codigo": "1.2.2.1", "descricao": "Serviços Capitalizados", "tipo": "Ativo", "natureza": "Devedora", "nivel": 4, "aceita_lancamento": True, "pai_codigo": "1.2.2"},
+        
         # 2. PASSIVO
         {"codigo": "2", "descricao": "PASSIVO", "tipo": "Passivo", "natureza": "Credora", "nivel": 1, "aceita_lancamento": False},
         {"codigo": "2.1", "descricao": "Passivo Circulante", "tipo": "Passivo", "natureza": "Credora", "nivel": 2, "aceita_lancamento": False, "pai_codigo": "2"},

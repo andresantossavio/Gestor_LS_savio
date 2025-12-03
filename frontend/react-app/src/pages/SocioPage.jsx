@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import Header from '../components/Header';
+import AportesSection from '../components/AportesSection';
 
 const apiBase = '/api/contabilidade';
 
@@ -9,6 +10,7 @@ const SocioPage = () => {
     const [isLoading, setIsLoading] = useState(true);
     const [error, setError] = useState(null);
     const [editingId, setEditingId] = useState(null);
+    const [selectedSocioForAportes, setSelectedSocioForAportes] = useState(null);
     const [newSocio, setNewSocio] = useState({
         nome: '',
         usuario_id: null,
@@ -53,6 +55,22 @@ const SocioPage = () => {
         fetchSocios();
         fetchUsuarios();
     }, []);
+
+    // Atualiza o formulário de edição quando o sócio é modificado (ex: após editar aporte)
+    useEffect(() => {
+        if (editingId) {
+            const socioAtualizado = socios.find(s => s.id === editingId);
+            if (socioAtualizado) {
+                setNewSocio({
+                    nome: socioAtualizado.nome || '',
+                    usuario_id: socioAtualizado.usuario_id || null,
+                    funcao: socioAtualizado.funcao || '',
+                    capital_social: socioAtualizado.capital_social || '',
+                    percentual: (socioAtualizado.percentual || 0) * 100
+                });
+            }
+        }
+    }, [socios, editingId]);
 
     const handleInputChange = (e) => {
         const { name, value } = e.target;
@@ -339,10 +357,31 @@ const SocioPage = () => {
                                     </span>
                                 </div>
                                 <div style={{ display: 'flex', gap: '10px' }}>
+                                    <button 
+                                        onClick={() => setSelectedSocioForAportes(selectedSocioForAportes?.id === socio.id ? null : socio)} 
+                                        style={{
+                                            padding: '5px 10px',
+                                            backgroundColor: selectedSocioForAportes?.id === socio.id ? '#ffc107' : '#17a2b8',
+                                            color: 'white',
+                                            border: 'none',
+                                            borderRadius: '4px',
+                                            cursor: 'pointer',
+                                            fontSize: '14px'
+                                        }}
+                                    >
+                                        💰 Aportes
+                                    </button>
                                     <button onClick={() => handleEdit(socio)} style={editButtonStyle}>✏️ Editar</button>
                                     <button onClick={() => handleDelete(socio.id)} style={deleteButtonStyle}>🗑️ Excluir</button>
                                 </div>
                             </div>
+                            {selectedSocioForAportes?.id === socio.id && (
+                                <AportesSection 
+                                    socioId={socio.id} 
+                                    socioNome={socio.nome}
+                                    onAporteChange={fetchSocios}
+                                />
+                            )}
                         </li>
                         ));
                     })()}

@@ -513,6 +513,9 @@ def executar_operacao(
     
     elif operacao_codigo == "PRO_LABORE":
         _executar_pro_labore(db, operacao_contabil, valor, data, descricao, criado_por_id)
+
+    elif operacao_codigo == "INSS_PESSOAL":
+        _executar_inss_pessoal(db, operacao_contabil, valor, data, descricao, criado_por_id)
     
     elif operacao_codigo == "INSS_PATRONAL":
         _executar_inss_patronal(db, operacao_contabil, valor, data, descricao, criado_por_id)
@@ -584,46 +587,50 @@ def _executar_reservar_fundo(db: Session, op: models.OperacaoContabil, valor: fl
 
 
 def _executar_pro_labore(db: Session, op: models.OperacaoContabil, valor: float, data: date_type, historico: Optional[str], criado_por: Optional[int]):
-    """PRO_LABORE: D-Despesa PL / C-Caixa (89%) + D-Despesa PL / C-INSS (11%)"""
+    """PRO_LABORE: D-Despesa PL / C-Caixa"""
     conta_despesa_pl = _buscar_conta_por_codigo(db, "5.1.1")
     conta_caixa = _buscar_conta_por_codigo(db, "1.1.1")
-    conta_inss = _buscar_conta_por_codigo(db, "2.1.5")
     
-    if not conta_despesa_pl or not conta_caixa or not conta_inss:
-        raise ValueError("Contas 5.1.1 (Pró-labore), 1.1.1 (Caixa) ou 2.1.5 (INSS) não encontradas")
+    if not conta_despesa_pl or not conta_caixa:
+        raise ValueError("Contas 5.1.1 (Pró-labore) ou 1.1.1 (Caixa) não encontradas")
     
-    valor_liquido = valor * 0.89
-    valor_inss = valor * 0.11
-    
-    # Lançamento do líquido
-    lanc1 = crud_plano_contas.criar_lancamento(
+    # Lançamento do valor bruto
+    lancamento = crud_plano_contas.criar_lancamento(
         db=db,
         data=data,
         conta_debito_id=conta_despesa_pl.id,
         conta_credito_id=conta_caixa.id,
-        valor=valor_liquido,
-        historico=historico or "Pró-labore líquido (89%)",
+        valor=valor,
+        historico=historico or "Pagamento de pró-labore",
         automatico=True,
         editavel=True,
         criado_por=criado_por
     )
-    lanc1.operacao_contabil_id = op.id
-    lanc1.referencia_mes = op.mes_referencia
+    lancamento.operacao_contabil_id = op.id
+    lancamento.referencia_mes = op.mes_referencia
+
+
+def _executar_inss_pessoal(db: Session, op: models.OperacaoContabil, valor: float, data: date_type, historico: Optional[str], criado_por: Optional[int]):
+    """INSS_PESSOAL: D-Despesa PL / C-INSS a Recolher"""
+    conta_despesa_pl = _buscar_conta_por_codigo(db, "5.1.1")
+    conta_inss = _buscar_conta_por_codigo(db, "2.1.5")
     
-    # Lançamento do INSS
-    lanc2 = crud_plano_contas.criar_lancamento(
+    if not conta_despesa_pl or not conta_inss:
+        raise ValueError("Contas 5.1.1 (Pró-labore) ou 2.1.5 (INSS a Pagar) não encontradas")
+    
+    lancamento = crud_plano_contas.criar_lancamento(
         db=db,
         data=data,
         conta_debito_id=conta_despesa_pl.id,
         conta_credito_id=conta_inss.id,
-        valor=valor_inss,
-        historico=historico or "INSS sobre pró-labore (11%)",
+        valor=valor,
+        historico=historico or "INSS pessoal sobre pró-labore",
         automatico=True,
         editavel=True,
         criado_por=criado_por
     )
-    lanc2.operacao_contabil_id = op.id
-    lanc2.referencia_mes = op.mes_referencia
+    lancamento.operacao_contabil_id = op.id
+    lancamento.referencia_mes = op.mes_referencia
 
 
 def _executar_inss_patronal(db: Session, op: models.OperacaoContabil, valor: float, data: date_type, historico: Optional[str], criado_por: Optional[int]):
@@ -640,7 +647,7 @@ def _executar_inss_patronal(db: Session, op: models.OperacaoContabil, valor: flo
         conta_debito_id=conta_despesa_inss.id,
         conta_credito_id=conta_inss.id,
         valor=valor,
-        historico=historico or "INSS patronal (20%)",
+        historico=historico or "INSS patronal",
         automatico=True,
         editavel=True,
         criado_por=criado_por

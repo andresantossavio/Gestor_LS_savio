@@ -51,44 +51,51 @@ def seed_operacoes():
             {
                 "codigo": "PRO_LABORE",
                 "nome": "Pró-labore (bruto)",
-                "descricao": "Registrar pagamento de pró-labore com desconto de INSS de 11%. Lançamentos: D-Despesa Pró-labore / C-Caixa (89% líquido) + D-Despesa Pró-labore / C-INSS a Recolher (11%)",
+                "descricao": "Registrar pagamento de pró-labore (valor bruto). Lançamento: D-Despesa Pró-labore / C-Caixa",
                 "ativo": True,
                 "ordem": 3
             },
             {
-                "codigo": "INSS_PATRONAL",
-                "nome": "INSS Patronal",
-                "descricao": "Provisionar INSS patronal (20% sobre pró-labore). Lançamento: D-Despesa INSS patronal / C-INSS a Recolher",
+                "codigo": "INSS_PESSOAL",
+                "nome": "INSS Pessoal (sobre Pró-labore)",
+                "descricao": "Provisionar INSS retido do pró-labore (ex: 11%). Lançamento: D-Despesa Pró-labore / C-INSS a Recolher",
                 "ativo": True,
                 "ordem": 4
+            },
+            {
+                "codigo": "INSS_PATRONAL",
+                "nome": "INSS Patronal",
+                "descricao": "Provisionar INSS patronal (ex: 20% sobre pró-labore). Lançamento: D-Despesa INSS patronal / C-INSS a Recolher",
+                "ativo": True,
+                "ordem": 5
             },
             {
                 "codigo": "PAGAR_INSS",
                 "nome": "Pagar INSS",
                 "descricao": "Efetuar pagamento do INSS acumulado. Lançamento: D-INSS a Recolher / C-Caixa. Validação: verifica saldo em 'INSS a Recolher'",
                 "ativo": True,
-                "ordem": 5
+                "ordem": 6
             },
             {
                 "codigo": "DISTRIBUIR_LUCROS",
                 "nome": "Distribuir Lucros",
                 "descricao": "Distribuir lucros aos sócios. Lançamento: D-Lucros Acum. / C-Caixa. Validação: verifica saldo em 'Lucros Acumulados'",
                 "ativo": True,
-                "ordem": 6
+                "ordem": 7
             },
             {
                 "codigo": "PAGAR_DESPESA_FUNDO",
                 "nome": "Pagar Despesa via Fundo",
                 "descricao": "Registrar pagamento de despesas diversas. Lançamento: D-Outras Despesas / C-Caixa",
                 "ativo": True,
-                "ordem": 7
+                "ordem": 8
             },
             {
                 "codigo": "BAIXAR_FUNDO",
                 "nome": "Baixa do Fundo",
                 "descricao": "Transferir recursos do fundo de reserva de volta para lucros. Lançamento: D-Reserva / C-Lucros Acum. Validação: verifica saldo em 'Reserva'",
                 "ativo": True,
-                "ordem": 8
+                "ordem": 9
             }
         ]
         

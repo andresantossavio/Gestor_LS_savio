@@ -4,7 +4,7 @@ import Header from '../components/Header';
 
 const apiBase = '/api/contabilidade';
 
-const Lancamentos = () => {
+const EntradasDespesas = () => {
     const navigate = useNavigate();
     const [entradas, setEntradas] = useState([]);
     const [despesas, setDespesas] = useState([]);
@@ -283,7 +283,7 @@ const Lancamentos = () => {
 
     return (
         <div style={{ padding: 20 }}>
-            <Header title="Gerenciar Lançamentos" />
+            <Header title="Gerenciar Entradas e Despesas" />
 
             {/* Filtros */}
             <div style={{ marginBottom: 20, padding: 15, backgroundColor: '#f5f5f5', borderRadius: 8 }}>
@@ -642,4 +642,4 @@ const tdStyle = {
     borderBottom: '1px solid #eee'
 };
 
-export default Lancamentos;
+export default EntradasDespesas;

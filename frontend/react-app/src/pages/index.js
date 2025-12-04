@@ -15,7 +15,7 @@ export { default as DespesaForm } from './DespesaForm.jsx';
 export { default as SocioPage } from './SocioPage.jsx';
 export { default as PrevisaoOperacao } from './PrevisaoOperacao.jsx';
 export { default as ProLabore } from './ProLabore.jsx';
-export { default as Lancamentos } from './Lancamentos.jsx';
+export { default as EntradasDespesas } from './EntradasDespesas.jsx';
 export { default as ConfigSimples } from './ConfigSimples.jsx';
 export { default as PlanoContas } from './PlanoContas.jsx';
 export { default as Balanco } from './Balanco.jsx';

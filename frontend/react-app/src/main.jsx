@@ -23,7 +23,7 @@ import PrevisaoOperacao from './pages/PrevisaoOperacao'
 import ProLabore from './pages/ProLabore'
 import Lucros from './pages/Lucros'
 import ConfigSimples from './pages/ConfigSimples'
-import Lancamentos from './pages/Lancamentos'
+import EntradasDespesas from './pages/EntradasDespesas'
 import PlanoContas from './pages/PlanoContas'
 import Balanco from './pages/Balanco'
 import DMPL from './pages/DMPL'
@@ -64,7 +64,7 @@ function App() {
             <Route path="/contabilidade/entradas/nova" element={<EntradaForm />} />
             <Route path="/contabilidade/despesas/nova" element={<DespesaForm />} />
             {/* Gerenciar Entradas/Despesas */}
-            <Route path="/contabilidade/lancamentos" element={<Lancamentos />} />
+            <Route path="/contabilidade/entradas-despesas" element={<EntradasDespesas />} />
             <Route path="/contabilidade/operacoes" element={<OperacoesContabeis />} />
             <Route path="/contabilidade/plano-contas" element={<PlanoContas />} />
             <Route path="/contabilidade/balanco" element={<Balanco />} />

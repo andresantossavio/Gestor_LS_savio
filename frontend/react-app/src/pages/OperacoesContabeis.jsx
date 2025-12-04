@@ -220,7 +220,7 @@ const OperacoesContabeis = () => {
                             >
                                 <option value="">Selecione uma operação</option>
                                 {operacoes.map(op => (
-                                    <option key={op.id} value={op.codigo}>
+                                    <option key={op.id} value={op.codigo} title={op.descricao}>
                                         {op.nome}
                                     </option>
                                 ))}

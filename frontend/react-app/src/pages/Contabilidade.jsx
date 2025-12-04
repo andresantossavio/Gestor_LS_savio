@@ -88,7 +88,7 @@ export default function Contabilidade() {
     { title: 'DFC', path: '/contabilidade/dfc', color: '#ddd6fe', textColor: '#5b21b6', icon: '💹' },
     { title: 'Lucros & Dividendos', path: '/contabilidade/lucros', color: '#d1fae5', textColor: '#065f46', icon: '💰' },
     { title: 'Pró-labore', path: '/contabilidade/pro-labore', color: '#fce7f3', textColor: '#831843', icon: '👤' },
-    { title: 'Lançamentos', path: '/contabilidade/lancamentos', color: '#e5e7eb', textColor: '#1f2937', icon: '📝' },
+    { title: 'Entradas & Despesas', path: '/contabilidade/entradas-despesas', color: '#e5e7eb', textColor: '#1f2937', icon: '💵', description: 'Previsão de entradas e despesas. A edição e exclusão são feitas na lista.' },
     { title: 'Plano de Contas', path: '/contabilidade/plano-contas', color: '#fed7aa', textColor: '#7c2d12', icon: '📋' },
     { title: 'Sócios', path: '/contabilidade/socios', color: '#bfdbfe', textColor: '#1e40af', icon: '👥' },
     { title: 'Config Simples', path: '/contabilidade/config-simples', color: '#c7d2fe', textColor: '#3730a3', icon: '⚙️' }
@@ -158,6 +158,7 @@ export default function Contabilidade() {
               key={idx}
               style={{ ...cardStyle, backgroundColor: card.color }}
               onClick={() => navigate(card.path)}
+              title={card.description}
               onMouseEnter={(e) => {
                 e.currentTarget.style.transform = cardHoverStyle.transform
                 e.currentTarget.style.boxShadow = cardHoverStyle.boxShadow

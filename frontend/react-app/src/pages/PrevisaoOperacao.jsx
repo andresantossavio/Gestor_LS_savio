@@ -76,6 +76,9 @@ const PrevisaoOperacao = () => {
     };
 
     const formatarMoeda = (valor) => {
+        if (valor === null || valor === undefined || isNaN(valor)) {
+            return 'R$ 0,00';
+        }
         return new Intl.NumberFormat('pt-BR', {
             style: 'currency',
             currency: 'BRL'
@@ -83,6 +86,9 @@ const PrevisaoOperacao = () => {
     };
 
     const formatarPercentual = (valor) => {
+        if (valor === null || valor === undefined || isNaN(valor)) {
+            return '0.00%';
+        }
         return `${(valor * 100).toFixed(2)}%`;
     };
 
@@ -122,10 +128,14 @@ const PrevisaoOperacao = () => {
                             <th style={thStyle}>Alíq. Efetiva</th>
                             <th style={thStyle}>Dedução</th>
                             <th style={thStyle}>Imposto Mês</th>
-                            <th style={thStyle}>INSS (Patronal 20%)</th>
+                            <th style={thStyle}>Pró-labore Bruto</th>
+                            <th style={thStyle}>INSS Pessoal (11%)</th>
+                            <th style={thStyle}>Pró-labore Líquido</th>
+                            <th style={thStyle}>INSS Patronal (20%)</th>
                             <th style={thStyle}>Despesas Gerais</th>
                             <th style={thStyle}>Lucro Líquido</th>
-                            <th style={thStyle}>Reserva 10%</th>
+                            <th style={thStyle}>Reserva Legal (10%)</th>
+                            <th style={thStyle}>Lucro Distribuível</th>
                             <th style={thStyle}>Ações</th>
                         </tr>
                     </thead>
@@ -148,10 +158,14 @@ const PrevisaoOperacao = () => {
                                 <td style={tdStyle}>{formatarPercentual(linha.aliquota_efetiva)}</td>
                                 <td style={tdStyle}>{formatarMoeda(linha.deducao)}</td>
                                 <td style={tdStyle}>{formatarMoeda(linha.imposto)}</td>
+                                <td style={tdStyle}>{formatarMoeda(linha.pro_labore_bruto || 0)}</td>
+                                <td style={tdStyle}>{formatarMoeda(linha.inss_pessoal || 0)}</td>
+                                <td style={tdStyle}>{formatarMoeda(linha.pro_labore_liquido || 0)}</td>
                                 <td style={tdStyle}>{formatarMoeda(linha.inss_patronal || 0)}</td>
                                 <td style={tdStyle}>{formatarMoeda(linha.despesas_gerais)}</td>
                                 <td style={tdStyle}>{formatarMoeda(linha.lucro_liquido)}</td>
-                                <td style={tdStyle}>{formatarMoeda(linha.reserva_10p)}</td>
+                                <td style={tdStyle}>{formatarMoeda(linha.reserva_legal || 0)}</td>
+                                <td style={tdStyle}>{formatarMoeda(linha.lucro_distribuivel || 0)}</td>
                                 <td style={tdStyle}>
                                     {!linha.consolidado && (
                                         <button 

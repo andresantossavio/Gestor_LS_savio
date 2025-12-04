@@ -74,7 +74,7 @@ def delete_socio(db: Session, socio_id: int) -> bool:
 # ==================== APORTES DE CAPITAL ====================
 
 def create_aporte_capital(db: Session, socio_id: int, aporte: Any) -> models.AporteCapital:
-    """Registra um aporte de capital"""
+    """Registra um aporte de capital e gera lançamento contábil correspondente"""
     db_aporte = models.AporteCapital(
         socio_id=socio_id,
         data=aporte.data,
@@ -92,6 +92,34 @@ def create_aporte_capital(db: Session, socio_id: int, aporte: Any) -> models.Apo
         if socio:
             socio.capital_social = (socio.capital_social or 0) + aporte.valor
             db.commit()
+        
+        # Gerar lançamento contábil baseado no tipo de aporte
+        # Mapear tipo de aporte para conta de débito
+        conta_debito_codigo = {
+            'dinheiro': '1.1.1.1',  # Caixa Corrente
+            'bens': '1.2.1.1',      # Equipamentos e Móveis (Imobilizado)
+            'servicos': '1.2.2.1'   # Serviços Capitalizados (Intangível)
+        }.get(aporte.tipo_aporte, '1.1.1.1')
+        
+        conta_debito = crud_plano_contas.buscar_conta_por_codigo(db, conta_debito_codigo)
+        conta_capital = crud_plano_contas.buscar_conta_por_codigo(db, "3.1")
+        
+        if conta_debito and conta_capital:
+            historico = f"Aporte de capital - {socio.nome} - {aporte.tipo_aporte}"
+            if aporte.descricao:
+                historico += f" - {aporte.descricao}"
+            
+            crud_plano_contas.criar_lancamento(
+                db=db,
+                data=aporte.data,
+                conta_debito_id=conta_debito.id,
+                conta_credito_id=conta_capital.id,
+                valor=aporte.valor,
+                historico=historico,
+                automatico=True,
+                editavel=False,
+                criado_por=None
+            )
     
     return db_aporte
 
@@ -109,32 +137,91 @@ def get_aporte(db: Session, aporte_id: int) -> Optional[models.AporteCapital]:
 
 
 def update_aporte_capital(db: Session, aporte_id: int, update_data: Any) -> Optional[models.AporteCapital]:
-    """Atualiza um aporte de capital"""
+    """Atualiza um aporte de capital e ajusta lançamentos contábeis"""
     db_aporte = get_aporte(db, aporte_id)
     if not db_aporte:
         return None
     
     valor_antigo = db_aporte.valor
     tipo_antigo = db_aporte.tipo_aporte
+    data_antiga = db_aporte.data
     
-    if update_data.data is not None:
-        db_aporte.data = update_data.data
-    if update_data.valor is not None:
-        db_aporte.valor = update_data.valor
-    if update_data.tipo_aporte is not None:
-        db_aporte.tipo_aporte = update_data.tipo_aporte
-    if update_data.descricao is not None:
-        db_aporte.descricao = update_data.descricao
+    # Buscar lançamento contábil associado (se existir)
+    lancamento_antigo = db.query(models.LancamentoContabil).filter(
+        models.LancamentoContabil.historico.like(f"%Aporte de capital%{db_aporte.socio.nome if db_aporte.socio else ''}%"),
+        models.LancamentoContabil.data == data_antiga,
+        models.LancamentoContabil.valor == valor_antigo
+    ).first()
+    
+    # Atualizar dados do aporte (suporta dict ou objeto)
+    if isinstance(update_data, dict):
+        if 'data' in update_data:
+            db_aporte.data = update_data['data']
+        if 'valor' in update_data:
+            db_aporte.valor = update_data['valor']
+        if 'tipo_aporte' in update_data:
+            db_aporte.tipo_aporte = update_data['tipo_aporte']
+        if 'descricao' in update_data:
+            db_aporte.descricao = update_data['descricao']
+    else:
+        if update_data.data is not None:
+            db_aporte.data = update_data.data
+        if update_data.valor is not None:
+            db_aporte.valor = update_data.valor
+        if update_data.tipo_aporte is not None:
+            db_aporte.tipo_aporte = update_data.tipo_aporte
+        if update_data.descricao is not None:
+            db_aporte.descricao = update_data.descricao
     
     db_aporte.atualizado_em = datetime.utcnow()
     
     # Ajustar capital social se mudou valor ou tipo
-    if tipo_antigo in ['dinheiro', 'bens', 'servicos']:
-        socio = get_socio(db, db_aporte.socio_id)
-        if socio:
+    socio = get_socio(db, db_aporte.socio_id)
+    if socio:
+        if tipo_antigo in ['dinheiro', 'bens', 'servicos']:
             socio.capital_social = (socio.capital_social or 0) - valor_antigo
-            if db_aporte.tipo_aporte in ['dinheiro', 'bens', 'servicos']:
-                socio.capital_social += db_aporte.valor
+        if db_aporte.tipo_aporte in ['dinheiro', 'bens', 'servicos']:
+            socio.capital_social = (socio.capital_social or 0) + db_aporte.valor
+    
+    # Atualizar ou criar lançamento contábil
+    if db_aporte.tipo_aporte in ['dinheiro', 'bens', 'servicos']:
+        # Mapear tipo de aporte para conta de débito
+        conta_debito_codigo = {
+            'dinheiro': '1.1.1.1',  # Caixa Corrente
+            'bens': '1.2.1.1',      # Equipamentos e Móveis (Imobilizado)
+            'servicos': '1.2.2.1'   # Serviços Capitalizados (Intangível)
+        }.get(db_aporte.tipo_aporte, '1.1.1.1')
+        
+        conta_debito = crud_plano_contas.buscar_conta_por_codigo(db, conta_debito_codigo)
+        conta_capital = crud_plano_contas.buscar_conta_por_codigo(db, "3.1")
+        
+        if conta_debito and conta_capital:
+            historico = f"Aporte de capital - {socio.nome if socio else 'N/A'} - {db_aporte.tipo_aporte}"
+            if db_aporte.descricao:
+                historico += f" - {db_aporte.descricao}"
+            
+            if lancamento_antigo:
+                # Atualizar lançamento existente
+                lancamento_antigo.data = db_aporte.data
+                lancamento_antigo.valor = db_aporte.valor
+                lancamento_antigo.historico = historico
+                lancamento_antigo.conta_debito_id = conta_debito.id
+            else:
+                # Criar novo lançamento
+                crud_plano_contas.criar_lancamento(
+                    db=db,
+                    data=db_aporte.data,
+                    conta_debito_id=conta_debito.id,
+                    conta_credito_id=conta_capital.id,
+                    valor=db_aporte.valor,
+                    historico=historico,
+                    automatico=True,
+                    editavel=False,
+                    criado_por=None
+                )
+    elif lancamento_antigo and tipo_antigo in ['dinheiro', 'bens', 'servicos']:
+        # Se mudou de tipo que gerava lançamento para tipo que não gera, excluir lançamento
+        db.delete(lancamento_antigo)
     
     db.commit()
     db.refresh(db_aporte)
@@ -142,10 +229,21 @@ def update_aporte_capital(db: Session, aporte_id: int, update_data: Any) -> Opti
 
 
 def delete_aporte_capital(db: Session, aporte_id: int) -> bool:
-    """Deleta um aporte de capital"""
+    """Deleta um aporte de capital e remove lançamento contábil associado"""
     db_aporte = get_aporte(db, aporte_id)
     if not db_aporte:
         return False
+    
+    # Buscar e excluir lançamento contábil associado
+    if db_aporte.tipo_aporte in ['dinheiro', 'bens', 'servicos']:
+        lancamento = db.query(models.LancamentoContabil).filter(
+            models.LancamentoContabil.historico.like(f"%Aporte de capital%{db_aporte.socio.nome if db_aporte.socio else ''}%"),
+            models.LancamentoContabil.data == db_aporte.data,
+            models.LancamentoContabil.valor == db_aporte.valor
+        ).first()
+        
+        if lancamento:
+            db.delete(lancamento)
     
     # Ajustar capital social
     if db_aporte.tipo_aporte in ['dinheiro', 'bens', 'servicos']:
@@ -197,16 +295,30 @@ def create_entrada(db: Session, entrada: Any) -> models.Entrada:
         valor=entrada.valor
     )
     db.add(db_entrada)
-    db.flush()
+    db.flush()  # Garante que db_entrada.id esteja disponível
     
-    # Adicionar sócios e seus percentuais
+    # Adicionar sócios e seus percentuais (evitar duplicatas)
+    socios_adicionados = set()
     for socio_data in entrada.socios:
-        entrada_socio = models.EntradaSocio(
-            entrada_id=db_entrada.id,
-            socio_id=socio_data.socio_id,
-            percentual=socio_data.percentual
-        )
-        db.add(entrada_socio)
+        # Verificar se já não foi adicionado (evita duplicatas no mesmo request)
+        chave = (db_entrada.id, socio_data.socio_id)
+        if chave in socios_adicionados:
+            continue
+            
+        # Verificar se já existe no banco (para caso de retry)
+        entrada_socio_existente = db.query(models.EntradaSocio).filter(
+            models.EntradaSocio.entrada_id == db_entrada.id,
+            models.EntradaSocio.socio_id == socio_data.socio_id
+        ).first()
+        
+        if not entrada_socio_existente:
+            entrada_socio = models.EntradaSocio(
+                entrada_id=db_entrada.id,
+                socio_id=socio_data.socio_id,
+                percentual=socio_data.percentual
+            )
+            db.add(entrada_socio)
+            socios_adicionados.add(chave)
     
     db.commit()
     db.refresh(db_entrada)
@@ -275,15 +387,29 @@ def create_despesa(db: Session, despesa: Any) -> models.Despesa:
         valor=despesa.valor
     )
     db.add(db_despesa)
-    db.flush()
+    db.flush()  # Garante que db_despesa.id esteja disponível
     
-    # Adicionar responsáveis
+    # Adicionar responsáveis (evitar duplicatas)
+    responsaveis_adicionados = set()
     for resp_data in despesa.responsaveis:
-        despesa_socio = models.DespesaSocio(
-            despesa_id=db_despesa.id,
-            socio_id=resp_data.socio_id
-        )
-        db.add(despesa_socio)
+        # Verificar se já não foi adicionado (evita duplicatas no mesmo request)
+        chave = (db_despesa.id, resp_data.socio_id)
+        if chave in responsaveis_adicionados:
+            continue
+            
+        # Verificar se já existe no banco (para caso de retry)
+        despesa_socio_existente = db.query(models.DespesaSocio).filter(
+            models.DespesaSocio.despesa_id == db_despesa.id,
+            models.DespesaSocio.socio_id == resp_data.socio_id
+        ).first()
+        
+        if not despesa_socio_existente:
+            despesa_socio = models.DespesaSocio(
+                despesa_id=db_despesa.id,
+                socio_id=resp_data.socio_id
+            )
+            db.add(despesa_socio)
+            responsaveis_adicionados.add(chave)
     
     db.commit()
     db.refresh(db_despesa)
@@ -508,8 +634,29 @@ def executar_operacao(
     if operacao_codigo == "REC_HON":
         _executar_rec_hon(db, operacao_contabil, valor, data, descricao)
     
-    elif operacao_codigo == "RESERVAR_FUNDO":
+    elif operacao_codigo == "APLICAR_RESERVA_CDB":
         _executar_reservar_fundo(db, operacao_contabil, valor, data, descricao)
+    
+    elif operacao_codigo == "PROVISIONAR_SIMPLES":
+        _executar_provisionar_simples(db, operacao_contabil, valor, data, descricao)
+    
+    elif operacao_codigo == "SEPARAR_OBRIGACOES_FISCAIS":
+        _executar_separar_obrigacoes_fiscais(db, operacao_contabil, valor, data, descricao)
+    
+    elif operacao_codigo == "SEPARAR_PRO_LABORE":
+        _executar_separar_pro_labore(db, operacao_contabil, valor, data, descricao)
+    
+    elif operacao_codigo == "RESGATAR_CDB_OBRIGACOES_FISCAIS":
+        _executar_resgatar_cdb_obrigacoes_fiscais(db, operacao_contabil, valor, data, descricao)
+    
+    elif operacao_codigo == "RESGATAR_CDB_LUCROS":
+        _executar_resgatar_cdb_lucros(db, operacao_contabil, valor, data, descricao)
+    
+    elif operacao_codigo == "PAGAR_SIMPLES":
+        _executar_pagar_simples(db, operacao_contabil, valor, data, descricao)
+    
+    elif operacao_codigo == "PAGAR_PRO_LABORE":
+        _executar_pagar_pro_labore(db, operacao_contabil, valor, data, descricao)
     
     elif operacao_codigo == "PRO_LABORE":
         _executar_pro_labore(db, operacao_contabil, valor, data, descricao, criado_por_id)
@@ -523,14 +670,33 @@ def executar_operacao(
     elif operacao_codigo == "PAGAR_INSS":
         _executar_pagar_inss(db, operacao_contabil, valor, data, descricao)
     
+    elif operacao_codigo == "APLICAR_LUCROS_CDB":
+        _executar_aplicar_lucros_cdb(db, operacao_contabil, valor, data, descricao)
+    
+    elif operacao_codigo == "ADIANTAR_LUCROS":
+        _executar_adiantar_lucros(db, operacao_contabil, valor, data, descricao)
+    
     elif operacao_codigo == "DISTRIBUIR_LUCROS":
         _executar_distribuir_lucros(db, operacao_contabil, valor, data, descricao)
     
     elif operacao_codigo == "PAGAR_DESPESA_FUNDO":
         _executar_pagar_despesa_fundo(db, operacao_contabil, valor, data, descricao, criado_por_id)
     
-    elif operacao_codigo == "BAIXAR_FUNDO":
+    elif operacao_codigo == "RESGATAR_CDB_RESERVA":
         _executar_baixar_fundo(db, operacao_contabil, valor, data, descricao)
+    
+    elif operacao_codigo == "RECONHECER_RESERVA_LEGAL":
+        _executar_reconhecer_reserva_legal(db, operacao_contabil, valor, data, descricao)
+    
+    elif operacao_codigo == "RECONHECER_RENDIMENTO_CDB":
+        # Requer tipo_cdb como parâmetro adicional
+        tipo_cdb = descricao.split(':')[1].strip() if descricao and ':' in descricao else None
+        if not tipo_cdb:
+            raise ValueError("RECONHECER_RENDIMENTO_CDB requer especificar o tipo de CDB (OBRIGACOES_FISCAIS, RESERVA_LUCROS ou RESERVA_LEGAL) no campo descrição. Formato: 'Tipo: RESERVA_LUCROS'")
+        _executar_reconhecer_rendimento_cdb(db, operacao_contabil, valor, data, None, tipo_cdb)
+    
+    elif operacao_codigo == "APURAR_RESULTADO":
+        _executar_apurar_resultado(db, operacao_contabil, valor, data, descricao)
     
     else:
         raise ValueError(f"Operação '{operacao_codigo}' não implementada")
@@ -541,12 +707,12 @@ def executar_operacao(
 
 
 def _executar_rec_hon(db: Session, op: models.OperacaoContabil, valor: float, data: date_type, historico: Optional[str]):
-    """REC_HON: D-Caixa / C-Receita"""
-    conta_caixa = _buscar_conta_por_codigo(db, "1.1.1")
+    """REC_HON: D-Caixa Corrente / C-Receita"""
+    conta_caixa = _buscar_conta_por_codigo(db, "1.1.1.1")
     conta_receita = _buscar_conta_por_codigo(db, "4.1.1")
     
     if not conta_caixa or not conta_receita:
-        raise ValueError("Contas 1.1.1 (Caixa) ou 4.1.1 (Receita) não encontradas")
+        raise ValueError("Contas 1.1.1.1 (Caixa Corrente) ou 4.1.1 (Receita) não encontradas")
     
     lancamento = crud_plano_contas.criar_lancamento(
         db=db,
@@ -564,20 +730,112 @@ def _executar_rec_hon(db: Session, op: models.OperacaoContabil, valor: float, da
 
 
 def _executar_reservar_fundo(db: Session, op: models.OperacaoContabil, valor: float, data: date_type, historico: Optional[str]):
-    """RESERVAR_FUNDO: D-Lucros Acum. / C-Reserva"""
+    """
+    APLICAR_RESERVA_CDB: D-CDB Reserva Legal / C-Caixa Corrente
+    
+    Aplicação simples de dinheiro em CDB de Reserva Legal.
+    - Apenas move dinheiro do Caixa para o CDB (Ativo → Ativo)
+    - NÃO mexe no PL ainda
+    - Pode ser executado durante o mês, antes de apurar resultado
+    - Exige informar sócio apenas para controle/histórico
+    
+    No fechamento do mês, executar RECONHECER_RESERVA_LEGAL para 
+    transferir lucros apurados para a reserva do sócio no PL.
+    """
+    # Validar presença de sócio
+    if not op.socio_id:
+        raise ValueError(
+            "APLICAR_RESERVA_CDB exige informar o sócio. "
+            "Selecione o sócio beneficiário da reserva."
+        )
+    
+    # Criar/obter subconta de CDB específica do sócio
+    # Formato: 1.1.1.2.3.{socio_id} - CDB Reserva Legal - {Nome}
+    subconta_cdb = crud_plano_contas._criar_subconta_cdb_reserva_socio(db, op.socio_id)
+    
+    # Buscar Caixa Corrente
+    conta_caixa_corrente = _buscar_conta_por_codigo(db, "1.1.1.1")
+    if not conta_caixa_corrente:
+        raise ValueError("Conta 1.1.1.1 (Caixa Corrente) não encontrada")
+    
+    # Validar saldo em Caixa Corrente
+    saldo_caixa = crud_plano_contas.calcular_saldo_conta(db, conta_caixa_corrente.id)
+    if saldo_caixa < valor:
+        raise ValueError(
+            f"💰 Saldo insuficiente em Caixa Corrente para aplicar em CDB.\n"
+            f"Saldo disponível: R$ {saldo_caixa:.2f}\n"
+            f"Valor solicitado: R$ {valor:.2f}\n"
+            f"Faltam: R$ {valor - saldo_caixa:.2f}\n\n"
+            f"💡 Dica: Receba honorários primeiro ou resgateoutros CDBs."
+        )
+    
+    # Lançamento ÚNICO: D-CDB Reserva Legal (subconta do sócio) / C-Caixa Corrente
+    # Move dinheiro de Caixa para CDB específico do sócio
+    # Isso permite rastreamento exato de quanto cada sócio tem no CDB
+    lancamento = crud_plano_contas.criar_lancamento(
+        db=db,
+        data=data,
+        conta_debito_id=subconta_cdb.id,
+        conta_credito_id=conta_caixa_corrente.id,
+        valor=valor,
+        historico=historico or f"Aplicação em CDB - reserva legal {op.socio.nome if op.socio else 'N/A'}",
+        automatico=True,
+        editavel=True,
+        criado_por=op.criado_por_id
+    )
+    lancamento.operacao_contabil_id = op.id
+    lancamento.referencia_mes = op.mes_referencia
+
+
+def _executar_reconhecer_reserva_legal(db: Session, op: models.OperacaoContabil, valor: float, data: date_type, historico: Optional[str]):
+    """
+    RECONHECER_RESERVA_LEGAL: D-Lucros Acumulados / C-Reserva do Sócio (PL)
+    
+    Operação de fechamento mensal para reconhecer no PL os valores
+    que foram aplicados em CDB de Reserva Legal durante o mês.
+    
+    Pré-requisito: APURAR_RESULTADO (precisa ter lucros acumulados)
+    
+    Fluxo completo:
+    1. Durante o mês: APLICAR_RESERVA_CDB (várias vezes)
+    2. Fim do mês: APURAR_RESULTADO
+    3. Fim do mês: RECONHECER_RESERVA_LEGAL (valor total aplicado no mês)
+    """
+    # Validar presença de sócio
+    if not op.socio_id:
+        raise ValueError(
+            "RECONHECER_RESERVA_LEGAL exige informar o sócio. "
+            "Selecione o sócio beneficiário da reserva."
+        )
+    
+    # Buscar conta de Lucros Acumulados
     conta_lucros = _buscar_conta_por_codigo(db, "3.3")
-    conta_reserva = _buscar_conta_por_codigo(db, "3.2")
+    if not conta_lucros:
+        raise ValueError("Conta 3.3 (Lucros Acumulados) não encontrada")
     
-    if not conta_lucros or not conta_reserva:
-        raise ValueError("Contas 3.3 (Lucros Acumulados) ou 3.2 (Reservas) não encontradas")
+    # Validar saldo em Lucros Acumulados
+    saldo_lucros = crud_plano_contas.calcular_saldo_conta(db, conta_lucros.id)
+    if saldo_lucros < valor:
+        raise ValueError(
+            f"💰 Saldo insuficiente em Lucros Acumulados.\n"
+            f"Saldo disponível: R$ {saldo_lucros:.2f}\n"
+            f"Valor solicitado: R$ {valor:.2f}\n"
+            f"Faltam: R$ {valor - saldo_lucros:.2f}\n\n"
+            f"💡 Dica: Execute APURAR_RESULTADO antes de reconhecer reservas."
+        )
     
+    # Criar/obter subconta de reserva do sócio
+    subconta_reserva = crud_plano_contas._criar_subconta_reserva_socio(db, op.socio_id)
+    
+    # Lançamento: D-Lucros Acumulados / C-Reserva do Sócio (PL)
+    # Move lucro para reserva específica do sócio no PL
     lancamento = crud_plano_contas.criar_lancamento(
         db=db,
         data=data,
         conta_debito_id=conta_lucros.id,
-        conta_credito_id=conta_reserva.id,
+        conta_credito_id=subconta_reserva.id,
         valor=valor,
-        historico=historico or "Constituição de fundo de reserva",
+        historico=historico or f"Constituição de reserva legal - {op.socio.nome if op.socio else 'N/A'}",
         automatico=True,
         editavel=True,
         criado_por=op.criado_por_id
@@ -587,21 +845,21 @@ def _executar_reservar_fundo(db: Session, op: models.OperacaoContabil, valor: fl
 
 
 def _executar_pro_labore(db: Session, op: models.OperacaoContabil, valor: float, data: date_type, historico: Optional[str], criado_por: Optional[int]):
-    """PRO_LABORE: D-Despesa Pró-Labore / C-Caixa"""
+    """PRO_LABORE: D-Despesa INSS Pessoal / C-Pró-labore a Pagar"""
     conta_despesa_pl = _buscar_conta_por_codigo(db, "5.1.1")
-    conta_caixa = _buscar_conta_por_codigo(db, "1.1.1")
+    conta_passivo = _buscar_conta_por_codigo(db, "2.1.3.1")
     
-    if not conta_despesa_pl or not conta_caixa:
-        raise ValueError("Contas 5.1.1 (Pró-labore) ou 1.1.1 (Caixa) não encontradas")
+    if not conta_despesa_pl or not conta_passivo:
+        raise ValueError("Contas 5.1.1 (INSS Pessoal) ou 2.1.3.1 (Pró-labore a Pagar) não encontradas")
     
-    # Lançamento do valor bruto
+    # Lançamento de provisão (não é pagamento)
     lancamento = crud_plano_contas.criar_lancamento(
         db=db,
         data=data,
         conta_debito_id=conta_despesa_pl.id,
-        conta_credito_id=conta_caixa.id,
+        conta_credito_id=conta_passivo.id,
         valor=valor,
-        historico=historico or "Pagamento de pró-labore",
+        historico=historico or "Provisão de pró-labore",
         automatico=True,
         editavel=True,
         criado_por=criado_por
@@ -611,12 +869,12 @@ def _executar_pro_labore(db: Session, op: models.OperacaoContabil, valor: float,
 
 
 def _executar_inss_pessoal(db: Session, op: models.OperacaoContabil, valor: float, data: date_type, historico: Optional[str], criado_por: Optional[int]):
-    """INSS_PESSOAL: D-Despesa Pró-Labore / C-INSS a Recolher"""
+    """INSS_PESSOAL: D-Despesa INSS Pessoal / C-INSS a Recolher"""
     conta_despesa_pl = _buscar_conta_por_codigo(db, "5.1.1")
-    conta_inss = _buscar_conta_por_codigo(db, "2.1.5")
+    conta_inss = _buscar_conta_por_codigo(db, "2.1.2.2")
     
     if not conta_despesa_pl or not conta_inss:
-        raise ValueError("Contas 5.1.1 (Pró-labore) ou 2.1.5 (INSS a Pagar) não encontradas")
+        raise ValueError("Contas 5.1.1 (INSS Pessoal) ou 2.1.2.2 (INSS a Recolher) não encontradas")
     
     lancamento = crud_plano_contas.criar_lancamento(
         db=db,
@@ -634,12 +892,12 @@ def _executar_inss_pessoal(db: Session, op: models.OperacaoContabil, valor: floa
 
 
 def _executar_inss_patronal(db: Session, op: models.OperacaoContabil, valor: float, data: date_type, historico: Optional[str], criado_por: Optional[int]):
-    """INSS_PATRONAL: D-Despesa INSS patronal / C-INSS a Recolher"""
+    """INSS_PATRONAL: D-Despesa INSS Patronal / C-INSS a Recolher"""
     conta_despesa_inss = _buscar_conta_por_codigo(db, "5.1.3")
-    conta_inss = _buscar_conta_por_codigo(db, "2.1.5")
+    conta_inss = _buscar_conta_por_codigo(db, "2.1.2.2")
     
     if not conta_despesa_inss or not conta_inss:
-        raise ValueError("Contas 5.1.3 (Encargos INSS) ou 2.1.5 (INSS a Pagar) não encontradas")
+        raise ValueError("Contas 5.1.3 (INSS Patronal) ou 2.1.2.2 (INSS a Recolher) não encontradas")
     
     lancamento = crud_plano_contas.criar_lancamento(
         db=db,
@@ -657,23 +915,41 @@ def _executar_inss_patronal(db: Session, op: models.OperacaoContabil, valor: flo
 
 
 def _executar_pagar_inss(db: Session, op: models.OperacaoContabil, valor: float, data: date_type, historico: Optional[str]):
-    """PAGAR_INSS: D-INSS a Recolher / C-Caixa"""
-    conta_inss = _buscar_conta_por_codigo(db, "2.1.5")
-    conta_caixa = _buscar_conta_por_codigo(db, "1.1.1")
+    """PAGAR_INSS: D-INSS a Recolher / C-Caixa Corrente
+    Pagamento sai do Caixa Corrente (user deve resgatar CDB antes se necessário)
+    """
+    conta_inss = _buscar_conta_por_codigo(db, "2.1.2.2")
+    conta_caixa_corrente = _buscar_conta_por_codigo(db, "1.1.1.1")
     
-    if not conta_inss or not conta_caixa:
-        raise ValueError("Contas 2.1.5 (INSS a Pagar) ou 1.1.1 (Caixa) não encontradas")
+    if not conta_inss or not conta_caixa_corrente:
+        raise ValueError("Contas 2.1.2.2 (INSS a Recolher) ou 1.1.1.1 (Caixa Corrente) não encontradas")
     
-    # Validar saldo de INSS
+    # Validar saldo de INSS a Recolher
     saldo_inss = crud_plano_contas.calcular_saldo_conta(db, conta_inss.id)
     if saldo_inss < valor:
-        raise ValueError(f"Saldo insuficiente em INSS a Pagar. Saldo: R$ {saldo_inss:.2f}, Valor: R$ {valor:.2f}")
+        raise ValueError(
+            f"📋 Obrigação insuficiente em INSS a Recolher.\n"
+            f"Saldo da obrigação: R$ {saldo_inss:.2f}\n"
+            f"Valor solicitado: R$ {valor:.2f}\n\n"
+            f"💡 Dica: Execute INSS_PESSOAL ou INSS_PATRONAL antes de pagar o INSS."
+        )
+    
+    # Validar saldo em Caixa Corrente
+    saldo_caixa = crud_plano_contas.calcular_saldo_conta(db, conta_caixa_corrente.id)
+    if saldo_caixa < valor:
+        raise ValueError(
+            f"💰 Saldo insuficiente em Caixa Corrente.\n"
+            f"Saldo disponível: R$ {saldo_caixa:.2f}\n"
+            f"Valor solicitado: R$ {valor:.2f}\n"
+            f"Faltam: R$ {valor - saldo_caixa:.2f}\n\n"
+            f"💡 Dica: Execute RESGATAR_CDB_OBRIGACOES_FISCAIS primeiro para ter saldo no caixa."
+        )
     
     lancamento = crud_plano_contas.criar_lancamento(
         db=db,
         data=data,
         conta_debito_id=conta_inss.id,
-        conta_credito_id=conta_caixa.id,
+        conta_credito_id=conta_caixa_corrente.id,
         valor=valor,
         historico=historico or "Pagamento de INSS",
         automatico=True,
@@ -685,17 +961,27 @@ def _executar_pagar_inss(db: Session, op: models.OperacaoContabil, valor: float,
 
 
 def _executar_distribuir_lucros(db: Session, op: models.OperacaoContabil, valor: float, data: date_type, historico: Optional[str]):
-    """DISTRIBUIR_LUCROS: D-Lucros Acum. / C-Caixa"""
+    """DISTRIBUIR_LUCROS: D-Lucros Acum. / C-Caixa Corrente"""
     conta_lucros = _buscar_conta_por_codigo(db, "3.3")
-    conta_caixa = _buscar_conta_por_codigo(db, "1.1.1")
+    conta_caixa = _buscar_conta_por_codigo(db, "1.1.1.1")
     
     if not conta_lucros or not conta_caixa:
-        raise ValueError("Contas 3.3 (Lucros Acumulados) ou 1.1.1 (Caixa) não encontradas")
+        raise ValueError("Contas 3.3 (Lucros Acumulados) ou 1.1.1.1 (Caixa Corrente) não encontradas")
     
     # Validar saldo de lucros
     saldo_lucros = crud_plano_contas.calcular_saldo_conta(db, conta_lucros.id)
     if saldo_lucros < valor:
         raise ValueError(f"Saldo insuficiente em Lucros Acumulados. Saldo: R$ {saldo_lucros:.2f}, Valor: R$ {valor:.2f}")
+    
+    # Validar saldo em Caixa Corrente (precisa ter dinheiro para distribuir)
+    saldo_caixa = crud_plano_contas.calcular_saldo_conta(db, conta_caixa.id)
+    if saldo_caixa < valor:
+        raise ValueError(
+            f"💰 Saldo insuficiente em Caixa Corrente para distribuir lucros.\n"
+            f"Saldo disponível: R$ {saldo_caixa:.2f}\n"
+            f"Valor solicitado: R$ {valor:.2f}\n"
+            f"Faltam: R$ {valor - saldo_caixa:.2f}"
+        )
     
     lancamento = crud_plano_contas.criar_lancamento(
         db=db,
@@ -713,12 +999,22 @@ def _executar_distribuir_lucros(db: Session, op: models.OperacaoContabil, valor:
 
 
 def _executar_pagar_despesa_fundo(db: Session, op: models.OperacaoContabil, valor: float, data: date_type, historico: Optional[str], criado_por: Optional[int]):
-    """PAGAR_DESPESA_FUNDO: D-Outras Despesas / C-Caixa"""
+    """PAGAR_DESPESA_FUNDO: D-Outras Despesas / C-Caixa Corrente"""
     conta_despesas = _buscar_conta_por_codigo(db, "5.2")
-    conta_caixa = _buscar_conta_por_codigo(db, "1.1.1")
+    conta_caixa = _buscar_conta_por_codigo(db, "1.1.1.1")
     
     if not conta_despesas or not conta_caixa:
-        raise ValueError("Contas 5.2 (Despesas Operacionais) ou 1.1.1 (Caixa) não encontradas")
+        raise ValueError("Contas 5.2 (Despesas Operacionais) ou 1.1.1.1 (Caixa Corrente) não encontradas")
+    
+    # Validar saldo em Caixa Corrente
+    saldo_caixa = crud_plano_contas.calcular_saldo_conta(db, conta_caixa.id)
+    if saldo_caixa < valor:
+        raise ValueError(
+            f"💰 Saldo insuficiente em Caixa Corrente para pagar despesa.\n"
+            f"Saldo disponível: R$ {saldo_caixa:.2f}\n"
+            f"Valor solicitado: R$ {valor:.2f}\n"
+            f"Faltam: R$ {valor - saldo_caixa:.2f}"
+        )
     
     lancamento = crud_plano_contas.criar_lancamento(
         db=db,
@@ -736,25 +1032,172 @@ def _executar_pagar_despesa_fundo(db: Session, op: models.OperacaoContabil, valo
 
 
 def _executar_baixar_fundo(db: Session, op: models.OperacaoContabil, valor: float, data: date_type, historico: Optional[str]):
-    """BAIXAR_FUNDO: D-Reserva / C-Lucros Acum."""
-    conta_reserva = _buscar_conta_por_codigo(db, "3.2")
-    conta_lucros = _buscar_conta_por_codigo(db, "3.3")
+    """
+    BAIXAR_FUNDO: D-Reserva (subconta do sócio) / C-Lucros Acum.
     
-    if not conta_reserva or not conta_lucros:
-        raise ValueError("Contas 3.2 (Reservas) ou 3.3 (Lucros Acumulados) não encontradas")
+    MODIFICADO: Agora exige socio_id e debita da subconta específica
+    """
+    # Validar presença de sócio
+    if not op.socio_id:
+        raise ValueError(
+            "BAIXAR_FUNDO exige informar o sócio. "
+            "Selecione de qual sócio a reserva será baixada."
+        )
     
-    # Validar saldo de reserva
+    # Buscar subconta de reserva do sócio
+    codigo_subconta = f"3.2.1.{op.socio_id}"
+    conta_reserva = _buscar_conta_por_codigo(db, codigo_subconta)
+    
+    if not conta_reserva:
+        raise ValueError(
+            f"Subconta de reserva não encontrada para o sócio {op.socio.nome if op.socio else 'ID ' + str(op.socio_id)}. "
+            f"Execute 'RESERVAR_FUNDO' primeiro para criar a subconta."
+        )
+    
+    # Validar saldo na subconta
     saldo_reserva = crud_plano_contas.calcular_saldo_conta(db, conta_reserva.id)
     if saldo_reserva < valor:
-        raise ValueError(f"Saldo insuficiente em Reserva. Saldo: R$ {saldo_reserva:.2f}, Valor: R$ {valor:.2f}")
+        raise ValueError(
+            f"Saldo insuficiente na reserva de {op.socio.nome if op.socio else 'N/A'}. "
+            f"Saldo disponível: R$ {saldo_reserva:.2f}, Valor solicitado: R$ {valor:.2f}"
+        )
     
-    lancamento = crud_plano_contas.criar_lancamento(
+    # Buscar conta de Lucros Acumulados
+    conta_lucros = _buscar_conta_por_codigo(db, "3.3")
+    if not conta_lucros:
+        raise ValueError("Conta 3.3 (Lucros Acumulados) não encontrada")
+    
+    # Buscar subconta de CDB específica do sócio
+    codigo_subconta_cdb = f"1.1.1.2.3.{op.socio_id}"
+    subconta_cdb = _buscar_conta_por_codigo(db, codigo_subconta_cdb)
+    
+    if not subconta_cdb:
+        raise ValueError(
+            f"Subconta de CDB não encontrada para o sócio {op.socio.nome if op.socio else 'ID ' + str(op.socio_id)}. "
+            f"Execute 'APLICAR_RESERVA_CDB' primeiro para criar a subconta."
+        )
+    
+    # Buscar Caixa Corrente
+    conta_caixa_corrente = _buscar_conta_por_codigo(db, "1.1.1.1")
+    if not conta_caixa_corrente:
+        raise ValueError("Conta 1.1.1.1 (Caixa Corrente) não encontrada")
+    
+    # Validar saldo na subconta de CDB do sócio
+    saldo_cdb = crud_plano_contas.calcular_saldo_conta(db, subconta_cdb.id)
+    if saldo_cdb < valor:
+        raise ValueError(
+            f"💰 Saldo insuficiente em CDB de {op.socio.nome if op.socio else 'N/A'}.\n"
+            f"Saldo disponível: R$ {saldo_cdb:.2f}\n"
+            f"Valor solicitado: R$ {valor:.2f}\n"
+            f"Faltam: R$ {valor - saldo_cdb:.2f}\n\n"
+            f"💡 Dica: Execute APLICAR_RESERVA_CDB antes de resgatar."
+        )
+    
+    # Lançamento 1: D-Caixa Corrente / C-CDB Reserva Legal (subconta do sócio) (resgate)
+    lancamento1 = crud_plano_contas.criar_lancamento(
+        db=db,
+        data=data,
+        conta_debito_id=conta_caixa_corrente.id,
+        conta_credito_id=subconta_cdb.id,
+        valor=valor,
+        historico=historico or f"Resgate de CDB - reserva legal {op.socio.nome if op.socio else 'N/A'}",
+        automatico=True,
+        editavel=True,
+        criado_por=op.criado_por_id
+    )
+    lancamento1.operacao_contabil_id = op.id
+    lancamento1.referencia_mes = op.mes_referencia
+    
+    # Lançamento 2: D-Reserva (sócio) / C-Lucros Acum (reversão no PL)
+    lancamento2 = crud_plano_contas.criar_lancamento(
         db=db,
         data=data,
         conta_debito_id=conta_reserva.id,
         conta_credito_id=conta_lucros.id,
         valor=valor,
-        historico=historico or "Baixa do fundo de reserva",
+        historico=historico or f"Reversão de reserva legal - {op.socio.nome if op.socio else 'N/A'}",
+        automatico=True,
+        editavel=True,
+        criado_por=op.criado_por_id
+    )
+    lancamento2.operacao_contabil_id = op.id
+    lancamento2.referencia_mes = op.mes_referencia
+
+
+def _executar_apurar_resultado(
+    db: Session, 
+    op: models.OperacaoContabil, 
+    valor: float, 
+    data: date_type, 
+    historico: Optional[str]
+):
+    """
+    APURAR_RESULTADO: Transfere lucro líquido para Lucros Acumulados
+    
+    Lançamento:
+    - Lucro positivo: D-4.9.9 (técnica) / C-3.3 (Lucros Acum)
+    - Prejuízo: D-3.3 / C-4.9.9
+    
+    Validações:
+    - Não permite executar duas vezes no mesmo mês
+    - Valor deve ser diferente de zero
+    """
+    # Validar valor
+    if abs(valor) < 0.01:
+        raise ValueError("Valor de apuração deve ser diferente de zero")
+    
+    # Calcular mês de referência
+    mes_ref = op.mes_referencia  # Formato YYYY-MM
+    
+    # Verificar se já existe apuração para este mês (exceto a própria operação em caso de edição)
+    existe_apuracao = db.query(models.OperacaoContabil).join(
+        models.Operacao
+    ).filter(
+        models.Operacao.codigo == "APURAR_RESULTADO",
+        models.OperacaoContabil.mes_referencia == mes_ref,
+        models.OperacaoContabil.cancelado == False,
+        models.OperacaoContabil.id != op.id  # Permitir edição da mesma operação
+    ).first()
+    
+    if existe_apuracao:
+        raise ValueError(
+            f"Já existe apuração de resultado para {mes_ref}. "
+            f"Cancele a operação anterior (ID {existe_apuracao.id}) antes de criar uma nova."
+        )
+    
+    # Utilizar função existente de fechamento de resultado
+    lancamento = crud_plano_contas.registrar_fechamento_resultado(
+        db=db,
+        mes=mes_ref,
+        valor_resultado=valor,
+        recriar=True  # Permite sobrescrever se necessário
+    )
+    
+    if lancamento:
+        # Vincular lançamento à operação
+        lancamento.operacao_contabil_id = op.id
+        lancamento.referencia_mes = mes_ref
+        lancamento.historico = historico or f"Apuração do resultado - {mes_ref}"
+        db.commit()
+    else:
+        raise ValueError("Falha ao criar lançamento de apuração")
+
+
+def _executar_provisionar_simples(db: Session, op: models.OperacaoContabil, valor: float, data: date_type, historico: Optional[str]):
+    """PROVISIONAR_SIMPLES: D-Despesa Simples / C-Simples a Recolher"""
+    conta_despesa = _buscar_conta_por_codigo(db, "5.3.1")
+    conta_passivo = _buscar_conta_por_codigo(db, "2.1.2.1")
+    
+    if not conta_despesa or not conta_passivo:
+        raise ValueError("Contas 5.3.1 (Despesa Simples) ou 2.1.2.1 (Simples a Recolher) não encontradas")
+    
+    lancamento = crud_plano_contas.criar_lancamento(
+        db=db,
+        data=data,
+        conta_debito_id=conta_despesa.id,
+        conta_credito_id=conta_passivo.id,
+        valor=valor,
+        historico=historico or "Provisão de Simples Nacional",
         automatico=True,
         editavel=True,
         criado_por=op.criado_por_id
@@ -763,10 +1206,439 @@ def _executar_baixar_fundo(db: Session, op: models.OperacaoContabil, valor: floa
     lancamento.referencia_mes = op.mes_referencia
 
 
+def _executar_separar_obrigacoes_fiscais(db: Session, op: models.OperacaoContabil, valor: float, data: date_type, historico: Optional[str]):
+    """SEPARAR_OBRIGACOES_FISCAIS: D-CDB - Obrigações Fiscais / C-Caixa Corrente
+    Aplicação direta de dinheiro em CDB para INSS + Simples Nacional
+    """
+    conta_cdb_obrigacoes = _buscar_conta_por_codigo(db, "1.1.1.2.1")
+    conta_caixa_corrente = _buscar_conta_por_codigo(db, "1.1.1.1")
+    
+    if not conta_cdb_obrigacoes or not conta_caixa_corrente:
+        raise ValueError("Contas 1.1.1.2.1 (CDB - Obrigações Fiscais) ou 1.1.1.1 (Caixa Corrente) não encontradas")
+    
+    # Validar saldo em Caixa Corrente
+    saldo_caixa = crud_plano_contas.calcular_saldo_conta(db, conta_caixa_corrente.id)
+    if saldo_caixa < valor:
+        raise ValueError(
+            f"💰 Saldo insuficiente em Caixa Corrente para separar obrigações fiscais.\n"
+            f"Saldo disponível: R$ {saldo_caixa:.2f}\n"
+            f"Valor solicitado: R$ {valor:.2f}\n"
+            f"Faltam: R$ {valor - saldo_caixa:.2f}\n\n"
+            f"💡 Dica: Execute REC_HON (Receber Honorários) primeiro para ter saldo disponível."
+        )
+    
+    lancamento = crud_plano_contas.criar_lancamento(
+        db=db,
+        data=data,
+        conta_debito_id=conta_cdb_obrigacoes.id,
+        conta_credito_id=conta_caixa_corrente.id,
+        valor=valor,
+        historico=historico or "Aplicação em CDB - Obrigações Fiscais (INSS + Simples)",
+        automatico=True,
+        editavel=True,
+        criado_por=op.criado_por_id
+    )
+    lancamento.operacao_contabil_id = op.id
+    lancamento.referencia_mes = op.mes_referencia
+
+
+def _executar_separar_pro_labore(db: Session, op: models.OperacaoContabil, valor: float, data: date_type, historico: Optional[str]):
+    """SEPARAR_PRO_LABORE: D-CDB - Reserva de Lucros / C-Caixa Corrente
+    Aplicação direta de dinheiro em CDB para pró-labore
+    """
+    conta_cdb_pl = _buscar_conta_por_codigo(db, "1.1.1.2.2")
+    conta_caixa_corrente = _buscar_conta_por_codigo(db, "1.1.1.1")
+    
+    if not conta_cdb_pl or not conta_caixa_corrente:
+        raise ValueError("Contas 1.1.1.2.2 (CDB - Reserva de Lucros) ou 1.1.1.1 (Caixa Corrente) não encontradas")
+    
+    # Validar saldo em Caixa Corrente
+    saldo_caixa = crud_plano_contas.calcular_saldo_conta(db, conta_caixa_corrente.id)
+    if saldo_caixa < valor:
+        raise ValueError(
+            f"💰 Saldo insuficiente em Caixa Corrente para separar pró-labore.\n"
+            f"Saldo disponível: R$ {saldo_caixa:.2f}\n"
+            f"Valor solicitado: R$ {valor:.2f}\n"
+            f"Faltam: R$ {valor - saldo_caixa:.2f}\n\n"
+            f"💡 Dica: Execute REC_HON (Receber Honorários) primeiro para ter saldo disponível."
+        )
+    
+    lancamento = crud_plano_contas.criar_lancamento(
+        db=db,
+        data=data,
+        conta_debito_id=conta_cdb_pl.id,
+        conta_credito_id=conta_caixa_corrente.id,
+        valor=valor,
+        historico=historico or "Aplicação em CDB - Reserva de Lucros (pró-labore)",
+        automatico=True,
+        editavel=True,
+        criado_por=op.criado_por_id
+    )
+    lancamento.operacao_contabil_id = op.id
+    lancamento.referencia_mes = op.mes_referencia
+
+
+def _executar_pagar_simples(db: Session, op: models.OperacaoContabil, valor: float, data: date_type, historico: Optional[str]):
+    """PAGAR_SIMPLES: D-Simples a Recolher / C-Caixa Corrente
+    Pagamento sai do Caixa Corrente (user deve resgatar CDB antes se necessário)
+    """
+    conta_passivo = _buscar_conta_por_codigo(db, "2.1.2.1")
+    conta_caixa_corrente = _buscar_conta_por_codigo(db, "1.1.1.1")
+    
+    if not conta_passivo or not conta_caixa_corrente:
+        raise ValueError("Contas 2.1.2.1 (Simples a Recolher) ou 1.1.1.1 (Caixa Corrente) não encontradas")
+    
+    # Validar saldo em Simples a Recolher
+    saldo_passivo = crud_plano_contas.calcular_saldo_conta(db, conta_passivo.id)
+    if saldo_passivo < valor:
+        raise ValueError(
+            f"📋 Obrigação insuficiente em Simples a Recolher.\n"
+            f"Saldo da obrigação: R$ {saldo_passivo:.2f}\n"
+            f"Valor solicitado: R$ {valor:.2f}\n\n"
+            f"💡 Dica: Execute PROVISIONAR_SIMPLES antes de pagar o Simples Nacional."
+        )
+    
+    # Validar saldo em Caixa Corrente
+    saldo_caixa = crud_plano_contas.calcular_saldo_conta(db, conta_caixa_corrente.id)
+    if saldo_caixa < valor:
+        raise ValueError(
+            f"💰 Saldo insuficiente em Caixa Corrente.\n"
+            f"Saldo disponível: R$ {saldo_caixa:.2f}\n"
+            f"Valor solicitado: R$ {valor:.2f}\n"
+            f"Faltam: R$ {valor - saldo_caixa:.2f}\n\n"
+            f"💡 Dica: Execute RESGATAR_CDB_OBRIGACOES_FISCAIS primeiro para ter saldo no caixa."
+        )
+    
+    lancamento = crud_plano_contas.criar_lancamento(
+        db=db,
+        data=data,
+        conta_debito_id=conta_passivo.id,
+        conta_credito_id=conta_caixa_corrente.id,
+        valor=valor,
+        historico=historico or "Pagamento de Simples Nacional",
+        automatico=True,
+        editavel=True,
+        criado_por=op.criado_por_id
+    )
+    lancamento.operacao_contabil_id = op.id
+    lancamento.referencia_mes = op.mes_referencia
+
+
+def _executar_pagar_pro_labore(db: Session, op: models.OperacaoContabil, valor: float, data: date_type, historico: Optional[str]):
+    """PAGAR_PRO_LABORE: D-Pró-labore a Pagar / C-Caixa Corrente
+    Pagamento sai do Caixa Corrente (user deve resgatar CDB antes se necessário)
+    """
+    conta_passivo = _buscar_conta_por_codigo(db, "2.1.3.1")
+    conta_caixa_corrente = _buscar_conta_por_codigo(db, "1.1.1.1")
+    
+    if not conta_passivo or not conta_caixa_corrente:
+        raise ValueError("Contas 2.1.3.1 (Pró-labore a Pagar) ou 1.1.1.1 (Caixa Corrente) não encontradas")
+    
+    # Validar saldo em Pró-labore a Pagar
+    saldo_passivo = crud_plano_contas.calcular_saldo_conta(db, conta_passivo.id)
+    if saldo_passivo < valor:
+        raise ValueError(
+            f"📋 Obrigação insuficiente em Pró-labore a Pagar.\n"
+            f"Saldo da obrigação: R$ {saldo_passivo:.2f}\n"
+            f"Valor solicitado: R$ {valor:.2f}\n\n"
+            f"💡 Dica: Execute PRO_LABORE (provisão) antes de pagar o pró-labore."
+        )
+    
+    # Validar saldo em Caixa Corrente
+    saldo_caixa = crud_plano_contas.calcular_saldo_conta(db, conta_caixa_corrente.id)
+    if saldo_caixa < valor:
+        raise ValueError(
+            f"💰 Saldo insuficiente em Caixa Corrente.\n"
+            f"Saldo disponível: R$ {saldo_caixa:.2f}\n"
+            f"Valor solicitado: R$ {valor:.2f}\n"
+            f"Faltam: R$ {valor - saldo_caixa:.2f}\n\n"
+            f"💡 Dica: Execute RESGATAR_CDB_LUCROS primeiro para ter saldo no caixa."
+        )
+    
+    lancamento = crud_plano_contas.criar_lancamento(
+        db=db,
+        data=data,
+        conta_debito_id=conta_passivo.id,
+        conta_credito_id=conta_caixa_corrente.id,
+        valor=valor,
+        historico=historico or "Pagamento de pró-labore",
+        automatico=True,
+        editavel=True,
+        criado_por=op.criado_por_id
+    )
+    lancamento.operacao_contabil_id = op.id
+    lancamento.referencia_mes = op.mes_referencia
+
+
+def _executar_resgatar_cdb_obrigacoes_fiscais(db: Session, op: models.OperacaoContabil, valor: float, data: date_type, historico: Optional[str]):
+    """RESGATAR_CDB_OBRIGACOES_FISCAIS: D-Caixa Corrente / C-CDB - Obrigações Fiscais
+    Resgatar CDB de obrigações fiscais para o caixa corrente antes de pagar INSS/Simples
+    """
+    conta_cdb = _buscar_conta_por_codigo(db, "1.1.1.2.1")
+    conta_caixa_corrente = _buscar_conta_por_codigo(db, "1.1.1.1")
+    
+    if not conta_cdb or not conta_caixa_corrente:
+        raise ValueError("Contas 1.1.1.2.1 (CDB - Obrigações Fiscais) ou 1.1.1.1 (Caixa Corrente) não encontradas")
+    
+    # Validar saldo no CDB
+    saldo_cdb = crud_plano_contas.calcular_saldo_conta(db, conta_cdb.id)
+    if saldo_cdb < valor:
+        raise ValueError(
+            f"💰 Saldo insuficiente em CDB - Obrigações Fiscais.\n"
+            f"Saldo disponível: R$ {saldo_cdb:.2f}\n"
+            f"Valor solicitado: R$ {valor:.2f}\n"
+            f"Faltam: R$ {valor - saldo_cdb:.2f}\n\n"
+            f"💡 Dica: Execute SEPARAR_OBRIGACOES_FISCAIS primeiro para ter saldo no CDB."
+        )
+    
+    # Lançamento: D-Caixa Corrente / C-CDB
+    lancamento = crud_plano_contas.criar_lancamento(
+        db=db,
+        data=data,
+        conta_debito_id=conta_caixa_corrente.id,
+        conta_credito_id=conta_cdb.id,
+        valor=valor,
+        historico=historico or "Resgate de CDB - Obrigações Fiscais",
+        automatico=True,
+        editavel=True,
+        criado_por=op.criado_por_id
+    )
+    lancamento.operacao_contabil_id = op.id
+    lancamento.referencia_mes = op.mes_referencia
+
+
+def _executar_aplicar_lucros_cdb(db: Session, op: models.OperacaoContabil, valor: float, data: date_type, historico: Optional[str]):
+    """APLICAR_LUCROS_CDB: D-CDB - Reserva de Lucros / C-Caixa Corrente
+    Aplicar dinheiro destinado à distribuição de lucros em CDB
+    """
+    conta_cdb_lucros = _buscar_conta_por_codigo(db, "1.1.1.2.2")
+    conta_caixa_corrente = _buscar_conta_por_codigo(db, "1.1.1.1")
+    
+    if not conta_cdb_lucros or not conta_caixa_corrente:
+        raise ValueError("Contas 1.1.1.2.2 (CDB - Reserva de Lucros) ou 1.1.1.1 (Caixa Corrente) não encontradas")
+    
+    # Validar saldo em Caixa Corrente
+    saldo_caixa = crud_plano_contas.calcular_saldo_conta(db, conta_caixa_corrente.id)
+    if saldo_caixa < valor:
+        raise ValueError(
+            f"💰 Saldo insuficiente em Caixa Corrente para aplicar lucros em CDB.\n"
+            f"Saldo disponível: R$ {saldo_caixa:.2f}\n"
+            f"Valor solicitado: R$ {valor:.2f}\n"
+            f"Faltam: R$ {valor - saldo_caixa:.2f}\n\n"
+            f"💡 Dica: Execute APURAR_RESULTADO primeiro para ter lucros disponíveis."
+        )
+    
+    lancamento = crud_plano_contas.criar_lancamento(
+        db=db,
+        data=data,
+        conta_debito_id=conta_cdb_lucros.id,
+        conta_credito_id=conta_caixa_corrente.id,
+        valor=valor,
+        historico=historico or "Aplicação de lucros em CDB - aguardando distribuição",
+        automatico=True,
+        editavel=True,
+        criado_por=op.criado_por_id
+    )
+    lancamento.operacao_contabil_id = op.id
+    lancamento.referencia_mes = op.mes_referencia
+
+
+def _executar_resgatar_cdb_lucros(db: Session, op: models.OperacaoContabil, valor: float, data: date_type, historico: Optional[str]):
+    """RESGATAR_CDB_LUCROS: D-Caixa Corrente / C-CDB - Reserva de Lucros
+    Resgatar CDB de reserva de lucros para o caixa corrente antes de pagar pró-labore ou distribuir lucros.
+    Esta operação unifica o resgate tanto para pró-labore quanto para lucros.
+    """
+    conta_cdb = _buscar_conta_por_codigo(db, "1.1.1.2.2")
+    conta_caixa_corrente = _buscar_conta_por_codigo(db, "1.1.1.1")
+    
+    if not conta_cdb or not conta_caixa_corrente:
+        raise ValueError("Contas 1.1.1.2.2 (CDB - Reserva de Lucros) ou 1.1.1.1 (Caixa Corrente) não encontradas")
+    
+    # Validar saldo no CDB
+    saldo_cdb = crud_plano_contas.calcular_saldo_conta(db, conta_cdb.id)
+    if saldo_cdb < valor:
+        raise ValueError(
+            f"💰 Saldo insuficiente em CDB - Reserva de Lucros.\n"
+            f"Saldo disponível: R$ {saldo_cdb:.2f}\n"
+            f"Valor solicitado: R$ {valor:.2f}\n"
+            f"Faltam: R$ {valor - saldo_cdb:.2f}\n\n"
+            f"💡 Dica: Execute SEPARAR_PRO_LABORE ou APLICAR_LUCROS_CDB primeiro para ter saldo no CDB."
+        )
+    
+    # Lançamento: D-Caixa Corrente / C-CDB
+    lancamento = crud_plano_contas.criar_lancamento(
+        db=db,
+        data=data,
+        conta_debito_id=conta_caixa_corrente.id,
+        conta_credito_id=conta_cdb.id,
+        valor=valor,
+        historico=historico or "Resgate de CDB - Reserva de Lucros",
+        automatico=True,
+        editavel=True,
+        criado_por=op.criado_por_id
+    )
+    lancamento.operacao_contabil_id = op.id
+    lancamento.referencia_mes = op.mes_referencia
+
+
+def _executar_adiantar_lucros(db: Session, op: models.OperacaoContabil, valor: float, data: date_type, historico: Optional[str]):
+    """ADIANTAR_LUCROS: Distribuir lucros antecipadamente usando reserva individual do sócio"""
+    if not op.socio_id:
+        raise ValueError("Operação ADIANTAR_LUCROS requer informar o sócio")
+    
+    # Buscar subconta de reserva do sócio (deve existir)
+    subconta_reserva = crud_plano_contas._obter_subconta_reserva_socio(db, op.socio_id)
+    if not subconta_reserva:
+        raise ValueError(
+            f"Reserva do sócio {op.socio.nome if op.socio else 'N/A'} não encontrada.\n"
+            f"💡 Dica: Execute APLICAR_RESERVA_CDB primeiro para criar a reserva do sócio."
+        )
+    
+    conta_caixa = _buscar_conta_por_codigo(db, "1.1.1.1")
+    if not conta_caixa:
+        raise ValueError("Conta 1.1.1.1 (Caixa Corrente) não encontrada")
+    
+    # Validar saldo na reserva do sócio
+    saldo_reserva = crud_plano_contas.calcular_saldo_conta(db, subconta_reserva.id)
+    if saldo_reserva < valor:
+        raise ValueError(
+            f"💰 Saldo insuficiente na reserva de {op.socio.nome if op.socio else 'N/A'}.\n"
+            f"Saldo disponível: R$ {saldo_reserva:.2f}\n"
+            f"Valor solicitado: R$ {valor:.2f}\n"
+            f"Faltam: R$ {valor - saldo_reserva:.2f}\n\n"
+            f"💡 Dica: Execute APLICAR_RESERVA_CDB para aumentar a reserva deste sócio."
+        )
+    
+    # Validar saldo em caixa (precisa ter dinheiro físico para distribuir)
+    saldo_caixa = crud_plano_contas.calcular_saldo_conta(db, conta_caixa.id)
+    if saldo_caixa < valor:
+        raise ValueError(
+            f"💰 Saldo insuficiente em Caixa Corrente.\n"
+            f"Saldo disponível: R$ {saldo_caixa:.2f}\n"
+            f"Valor solicitado: R$ {valor:.2f}\n"
+            f"Faltam: R$ {valor - saldo_caixa:.2f}\n\n"
+            f"💡 Dica: Resgatar CDB ou receber honorários antes de adiantar lucros."
+        )
+    
+    # Lançamento: D-Reserva do Sócio / C-Caixa Corrente
+    lancamento = crud_plano_contas.criar_lancamento(
+        db=db,
+        data=data,
+        conta_debito_id=subconta_reserva.id,
+        conta_credito_id=conta_caixa.id,
+        valor=valor,
+        historico=historico or f"Adiantamento de lucros - {op.socio.nome if op.socio else 'N/A'}",
+        automatico=True,
+        editavel=True,
+        criado_por=op.criado_por_id
+    )
+    lancamento.operacao_contabil_id = op.id
+    lancamento.referencia_mes = op.mes_referencia
+
+
+def _executar_reconhecer_rendimento_cdb(db: Session, op: models.OperacaoContabil, valor: float, data: date_type, historico: Optional[str], tipo_cdb: str):
+    """RECONHECER_RENDIMENTO_CDB: Contabilizar juros/rendimentos de CDB
+    
+    Para RESERVA_LEGAL: distribui rendimentos proporcionalmente entre as subcontas dos sócios
+    Para outros tipos: lança direto na conta pai
+    
+    Args:
+        tipo_cdb: 'OBRIGACOES_FISCAIS', 'RESERVA_LUCROS', 'RESERVA_LEGAL'
+    """
+    # Mapear tipo de CDB para contas
+    mapeamento = {
+        'OBRIGACOES_FISCAIS': ('1.1.1.2.1', 'CDB - Obrigações Fiscais'),
+        'RESERVA_LUCROS': ('1.1.1.2.2', 'CDB - Reserva de Lucros'),
+        'RESERVA_LEGAL': ('1.1.1.2.3', 'CDB - Reserva Legal')
+    }
+    
+    if tipo_cdb not in mapeamento:
+        raise ValueError(f"Tipo de CDB inválido: {tipo_cdb}. Use: OBRIGACOES_FISCAIS, RESERVA_LUCROS ou RESERVA_LEGAL")
+    
+    codigo_cdb, nome_cdb = mapeamento[tipo_cdb]
+    conta_receita = _buscar_conta_por_codigo(db, "4.2.1")
+    
+    if not conta_receita:
+        raise ValueError("Conta 4.2.1 (Rendimento de CDB) não encontrada")
+    
+    # Se for RESERVA_LEGAL, distribuir proporcionalmente entre subcontas dos sócios
+    if tipo_cdb == 'RESERVA_LEGAL':
+        # Buscar todas as subcontas de CDB Reserva Legal (1.1.1.2.3.*)
+        todas_contas = crud_plano_contas.listar_plano_contas(db, apenas_ativas=True)
+        subcontas_cdb = [c for c in todas_contas if c.codigo.startswith("1.1.1.2.3.") and c.aceita_lancamento]
+        
+        if not subcontas_cdb:
+            raise ValueError(
+                "Nenhuma subconta de CDB Reserva Legal encontrada. "
+                "Execute APLICAR_RESERVA_CDB primeiro para criar as subcontas dos sócios."
+            )
+        
+        # Calcular saldo total e proporções
+        saldos = {sc: crud_plano_contas.calcular_saldo_conta(db, sc.id) for sc in subcontas_cdb}
+        saldo_total = sum(saldos.values())
+        
+        if saldo_total <= 0:
+            raise ValueError(
+                f"Saldo total em CDB Reserva Legal é zero ou negativo (R$ {saldo_total:.2f}). "
+                "Não é possível distribuir rendimentos."
+            )
+        
+        # Distribuir rendimento proporcionalmente
+        for subconta, saldo in saldos.items():
+            if saldo <= 0:
+                continue
+            
+            proporcao = saldo / saldo_total
+            valor_proporcional = valor * proporcao
+            
+            # Extrair socio_id do código da subconta (1.1.1.2.3.{socio_id})
+            socio_id = int(subconta.codigo.split('.')[-1])
+            socio = db.query(models.Socio).filter(models.Socio.id == socio_id).first()
+            nome_socio = socio.nome if socio else f"ID {socio_id}"
+            
+            # Lançamento: D-CDB (subconta do sócio) / C-Receitas Financeiras
+            lancamento = crud_plano_contas.criar_lancamento(
+                db=db,
+                data=data,
+                conta_debito_id=subconta.id,
+                conta_credito_id=conta_receita.id,
+                valor=valor_proporcional,
+                historico=historico or f"Rendimento CDB Reserva Legal - {nome_socio} ({proporcao*100:.2f}%)",
+                automatico=True,
+                editavel=True,
+                criado_por=op.criado_por_id
+            )
+            lancamento.operacao_contabil_id = op.id
+            lancamento.referencia_mes = op.mes_referencia
+    
+    else:
+        # Para outros tipos de CDB, lançar direto na conta pai
+        conta_cdb = _buscar_conta_por_codigo(db, codigo_cdb)
+        if not conta_cdb:
+            raise ValueError(f"Conta {codigo_cdb} ({nome_cdb}) não encontrada")
+        
+        # Lançamento: D-CDB / C-Receitas Financeiras
+        lancamento = crud_plano_contas.criar_lancamento(
+            db=db,
+            data=data,
+            conta_debito_id=conta_cdb.id,
+            conta_credito_id=conta_receita.id,
+            valor=valor,
+            historico=historico or f"Rendimento de {nome_cdb}",
+            automatico=True,
+            editavel=True,
+            criado_por=op.criado_por_id
+        )
+        lancamento.operacao_contabil_id = op.id
+        lancamento.referencia_mes = op.mes_referencia
+
+
 def listar_historico_operacoes(
     db: Session,
     mes_referencia: Optional[str] = None,
+    operacao_codigo: Optional[str] = None,
     socio_id: Optional[int] = None,
+    incluir_cancelados: bool = False,
     skip: int = 0,
     limit: int = 100
 ) -> List[models.OperacaoContabil]:
@@ -776,8 +1648,14 @@ def listar_historico_operacoes(
     if mes_referencia:
         query = query.filter(models.OperacaoContabil.mes_referencia == mes_referencia)
     
+    if operacao_codigo:
+        query = query.filter(models.OperacaoContabil.operacao_codigo == operacao_codigo)
+    
     if socio_id:
         query = query.filter(models.OperacaoContabil.socio_id == socio_id)
+    
+    if not incluir_cancelados:
+        query = query.filter(models.OperacaoContabil.cancelado == False)
     
     return query.order_by(models.OperacaoContabil.data.desc()).offset(skip).limit(limit).all()
 
@@ -899,26 +1777,89 @@ def calcular_pro_labore_iterativo(
     receita_12m: float,
     faixa_simples: Any,
     despesas_gerais: float,
-    percentual_pl: float = 0.05
+    percentual_contrib_admin: float = 0.0,
+    percentual_pl: float = 0.05,
+    salario_minimo: float = 1518.0
 ) -> tuple:
     """
-    Calcula pró-labore de forma iterativa considerando que o pró-labore
-    impacta o próprio lucro líquido
+    Calcula pró-labore considerando a lógica:
+    - Administrador recebe: 5% do LL total + (85% do LL × % contribuição nas entradas)
+    - Pró-labore = MIN(Total a receber, salário mínimo)
+    - O restante é distribuído como lucro
     
-    Returns: (pro_labore, inss_patronal, inss_pessoal, lucro_liquido)
+    Resolve a circularidade:
+    - LL = LB - INSS Patronal
+    - INSS Patronal = 20% do Pró-labore
+    - Pró-labore depende do LL
+    
+    Args:
+        db: Sessão do banco
+        receita_bruta: Receita bruta do mês
+        receita_12m: Receita acumulada 12 meses
+        faixa_simples: Objeto SimplesFaixa com aliquota e deducao
+        despesas_gerais: Despesas gerais do mês
+        percentual_contrib_admin: % de contribuição do admin nas entradas do mês
+        percentual_pl: Percentual fixo para administração (padrão 5%)
+        salario_minimo: Limite do pró-labore (padrão R$ 1.518)
+    
+    Returns: 
+        (pro_labore_bruto, inss_patronal, inss_pessoal, lucro_liquido)
     """
-    # Cálculo simplificado - expandir conforme necessário
+    # Validação: se receita ou lucro bruto for zero/negativo
+    if receita_bruta <= 0:
+        return (0.0, 0.0, 0.0, 0.0)
+    
+    # Calcular imposto Simples
     imposto_simples = receita_bruta * faixa_simples.aliquota - faixa_simples.deducao
     lucro_bruto = receita_bruta - imposto_simples - despesas_gerais
     
-    # Iteração simplificada
-    pro_labore = lucro_bruto * percentual_pl
-    inss_pessoal = pro_labore * 0.11
-    inss_patronal = pro_labore * 0.20
+    # Se lucro bruto for zero ou negativo, não há pró-labore
+    if lucro_bruto <= 0:
+        return (0.0, 0.0, 0.0, lucro_bruto)
     
-    lucro_liquido = lucro_bruto - pro_labore - inss_patronal
+    # LÓGICA CORRETA:
+    # Total a receber pelo admin = 5% do LL + (85% do LL × % contribuição)
+    # Total_admin = 0.05 × LL + 0.85 × LL × (percentual_contrib_admin / 100)
+    # Total_admin = LL × (0.05 + 0.85 × percentual_contrib_admin / 100)
     
-    return (pro_labore, inss_patronal, inss_pessoal, lucro_liquido)
+    percentual_total_admin = percentual_pl + (0.85 * percentual_contrib_admin / 100.0)
+    
+    # Pró-labore = MIN(Total_admin, salário_mínimo)
+    # LL = LB - INSS_Patronal
+    # INSS_Patronal = 0.20 × Pró-labore
+    #
+    # Se Total_admin < salário_mínimo:
+    #   PL = Total_admin = LL × percentual_total_admin
+    #   LL = LB - (PL × 0.20)
+    #   LL = LB - (LL × percentual_total_admin × 0.20)
+    #   LL × (1 + percentual_total_admin × 0.20) = LB
+    #   LL = LB / (1 + percentual_total_admin × 0.20)
+    
+    # Calcular primeiro assumindo que Total_admin < salário_mínimo
+    lucro_liquido_temp = lucro_bruto / (1 + percentual_total_admin * 0.20)
+    total_admin_temp = lucro_liquido_temp * percentual_total_admin
+    
+    if total_admin_temp <= salario_minimo:
+        # Caso simples: todo o valor do admin vira pró-labore
+        lucro_liquido_final = lucro_liquido_temp
+        pro_labore_final = total_admin_temp
+    else:
+        # Caso complexo: pró-labore limitado ao salário mínimo
+        # PL = salário_mínimo (fixo)
+        # LL = LB - (salário_mínimo × 0.20)
+        inss_patronal_fixo = salario_minimo * 0.20
+        lucro_liquido_final = lucro_bruto - inss_patronal_fixo
+        pro_labore_final = salario_minimo
+    
+    inss_patronal_final = pro_labore_final * 0.20
+    inss_pessoal_final = pro_labore_final * 0.11
+    
+    return (
+        round(pro_labore_final, 2),
+        round(inss_patronal_final, 2),
+        round(inss_pessoal_final, 2),
+        round(lucro_liquido_final, 2)
+    )
 
 
 # ==================== DMPL (Demonstração das Mutações do PL) ====================

@@ -72,6 +72,120 @@ def _ultimo_dia_mes(ano: int, mes: int) -> date_type:
     return date_type(ano, mes, dia)
 
 
+def _criar_subconta_reserva_socio(
+    db: Session,
+    socio_id: int
+) -> models.PlanoDeContas:
+    """
+    Cria dinamicamente uma subconta de reserva para um sócio específico.
+    Formato: 3.2.1.{socio_id} - Reserva - {Nome do Sócio}
+    
+    A subconta é criada automaticamente na primeira execução de RESERVAR_FUNDO.
+    """
+    socio = db.query(models.Socio).filter(models.Socio.id == socio_id).first()
+    if not socio:
+        raise ValueError(f"Sócio ID {socio_id} não encontrado")
+    
+    codigo_subconta = f"3.2.1.{socio_id}"
+    descricao_subconta = f"Reserva - {socio.nome}"
+    
+    # Verificar se já existe
+    conta_existente = buscar_conta_por_codigo(db, codigo_subconta)
+    if conta_existente:
+        return conta_existente
+    
+    # Garantir que a conta pai (3.2.1) existe e é sintética
+    conta_pai = buscar_conta_por_codigo(db, "3.2.1")
+    if not conta_pai:
+        raise ValueError("Conta 3.2.1 (Reserva de Lucros) não encontrada")
+    
+    if conta_pai.aceita_lancamento:
+        # Transformar em sintética se ainda não for
+        conta_pai.aceita_lancamento = False
+        db.commit()
+    
+    # Criar subconta analítica
+    subconta = models.PlanoDeContas(
+        codigo=codigo_subconta,
+        descricao=descricao_subconta,
+        tipo="PL",
+        natureza="Credora",
+        nivel=4,
+        aceita_lancamento=True,
+        ativo=True,
+        pai_id=conta_pai.id
+    )
+    db.add(subconta)
+    db.commit()
+    db.refresh(subconta)
+    
+    return subconta
+
+
+def _criar_subconta_cdb_reserva_socio(
+    db: Session,
+    socio_id: int
+) -> models.PlanoDeContas:
+    """
+    Cria dinamicamente uma subconta de CDB Reserva Legal para um sócio específico.
+    Formato: 1.1.1.2.3.{socio_id} - CDB Reserva Legal - {Nome do Sócio}
+    
+    Permite rastreamento de quanto cada sócio tem aplicado em CDB.
+    """
+    socio = db.query(models.Socio).filter(models.Socio.id == socio_id).first()
+    if not socio:
+        raise ValueError(f"Sócio ID {socio_id} não encontrado")
+    
+    codigo_subconta = f"1.1.1.2.3.{socio_id}"
+    descricao_subconta = f"CDB Reserva Legal - {socio.nome}"
+    
+    # Verificar se já existe
+    conta_existente = buscar_conta_por_codigo(db, codigo_subconta)
+    if conta_existente:
+        return conta_existente
+    
+    # Garantir que a conta pai (1.1.1.2.3) existe e é sintética
+    conta_pai = buscar_conta_por_codigo(db, "1.1.1.2.3")
+    if not conta_pai:
+        raise ValueError("Conta 1.1.1.2.3 (CDB - Reserva Legal) não encontrada")
+    
+    if conta_pai.aceita_lancamento:
+        # Transformar em sintética se ainda não for
+        conta_pai.aceita_lancamento = False
+        db.commit()
+    
+    # Criar subconta analítica
+    subconta = models.PlanoDeContas(
+        codigo=codigo_subconta,
+        descricao=descricao_subconta,
+        tipo="Ativo",
+        natureza="Devedora",
+        nivel=6,
+        aceita_lancamento=True,
+        ativo=True,
+        pai_id=conta_pai.id
+    )
+    db.add(subconta)
+    db.commit()
+    db.refresh(subconta)
+    
+    return subconta
+
+
+def _obter_subconta_reserva_socio(
+    db: Session,
+    socio_id: int
+) -> Optional[models.PlanoDeContas]:
+    """
+    Obtém a subconta de reserva de um sócio específico.
+    Retorna None se não existir.
+    
+    Formato: 3.2.1.{socio_id} - Reserva - {Nome do Sócio}
+    """
+    codigo_subconta = f"3.2.1.{socio_id}"
+    return buscar_conta_por_codigo(db, codigo_subconta)
+
+
 def calcular_saldo_conta(db: Session, conta_id: int, data_inicio: Optional[date_type] = None, data_fim: Optional[date_type] = None) -> float:
     """
     Calcula o saldo de uma conta considerando sua natureza (Devedora ou Credora)
@@ -721,42 +835,10 @@ def gerar_balanco_patrimonial(db: Session, mes: int, ano: int):
     data_fim = date_type(ano, mes, ultimo_dia)
     mes_str = f"{ano}-{mes:02d}"
     
-    # Verificar se o mês está consolidado
-    dre_mes = db.query(models.DREMensal).filter(models.DREMensal.mes == mes_str).first()
-    mes_consolidado = dre_mes and dre_mes.consolidado
-    
-    # Se não consolidado, calcular impostos previstos em tempo real
+    # Cálculo sempre baseado nos lançamentos contábeis registrados
+    mes_consolidado = True
     ajustes_tempo_real = {}
     alertas = []
-    if not mes_consolidado:
-        impostos_previstos = crud_contabilidade.calcular_impostos_previstos_mes(db, mes_str)
-        
-        # Buscar pagamentos já feitos no mês (se houver)
-        pagamentos_simples = db.query(models.LancamentoContabil).filter(
-            models.LancamentoContabil.tipo_lancamento == 'pagamento_simples',
-            models.LancamentoContabil.referencia_mes == mes_str
-        ).all()
-        total_pago_simples = sum(lanc.valor for lanc in pagamentos_simples)
-        
-        pagamentos_inss = db.query(models.LancamentoContabil).filter(
-            models.LancamentoContabil.tipo_lancamento == 'pagamento_inss',
-            models.LancamentoContabil.referencia_mes == mes_str
-        ).all()
-        total_pago_inss = sum(lanc.valor for lanc in pagamentos_inss)
-        
-        # Calcular depreciação prevista do mês
-        depreciacao_prevista = crud_contabilidade.calcular_depreciacao_prevista_mes(db, mes, ano)
-        
-        # Calcular saldos líquidos (provisionado - pago)
-        ajustes_tempo_real = {
-            '2.1.4': impostos_previstos['imposto_simples'] - total_pago_simples,  # Simples a Pagar
-            '2.1.5': (impostos_previstos['inss_patronal'] + impostos_previstos['inss_pessoal']) - total_pago_inss,  # INSS a Pagar
-            '5.2.9': depreciacao_prevista['despesa'],      # Despesa de Depreciação
-            '1.2.9': depreciacao_prevista['acumulada']     # Depreciação Acumulada (redutora)
-        }
-        
-        # Gerar alertas contextuais
-        alertas = crud_contabilidade.gerar_alertas(db, mes, ano, ajustes_tempo_real)
     
     def construir_hierarquia(conta_pai_codigo: str, inverter_sinal: bool = False):
         """Constrói hierarquia recursiva de contas
@@ -775,10 +857,6 @@ def gerar_balanco_patrimonial(db: Session, mes: int, ano: int):
         contas_dict = {}
         for c in contas:
             saldo_base = calcular_saldo_conta(db, c.id, data_fim=data_fim)
-            
-            # AJUSTE TEMPO REAL: Se mês não consolidado, usar valores provisionados para 2.1.4 e 2.1.5
-            if not mes_consolidado and c.codigo in ajustes_tempo_real:
-                saldo_base = ajustes_tempo_real[c.codigo]
             
             # Para contas do PL (grupo 3) com natureza DEVEDORA (contas redutoras como 3.4.1),
             # inverter o sinal para que subtraiam do PL ao invés de somar
@@ -887,14 +965,9 @@ def gerar_balanco_patrimonial(db: Session, mes: int, ano: int):
         "metadata": {
             "mes": mes_str,
             "consolidado": mes_consolidado,
-            "ajustesTempoReal": not mes_consolidado,
-            "ajustesAplicados": [
-                {"conta": "2.1.4", "valor": ajustes_tempo_real.get("2.1.4", 0), "fonte": "calcular_impostos_previstos_mes", "descricao": "Simples Nacional a Pagar"},
-                {"conta": "2.1.5", "valor": ajustes_tempo_real.get("2.1.5", 0), "fonte": "calcular_impostos_previstos_mes", "descricao": "INSS a Pagar"},
-                {"conta": "5.2.9", "valor": ajustes_tempo_real.get("5.2.9", 0), "fonte": "calcular_depreciacao_prevista_mes", "descricao": "Despesa de Depreciação"},
-                {"conta": "1.2.9", "valor": ajustes_tempo_real.get("1.2.9", 0), "fonte": "calcular_depreciacao_prevista_mes", "descricao": "Depreciação Acumulada (-)"}
-            ] if not mes_consolidado else [],
-            "alertas": alertas
+            "ajustesTempoReal": False,
+            "ajustesAplicados": [],
+            "alertas": []
         }
     }
     

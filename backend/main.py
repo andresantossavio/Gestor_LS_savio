@@ -15,15 +15,10 @@ from utils import prazos, exportacao  # Import utils
 from datetime import date as date_type, datetime
 import time  # Add this import for timing
 
-# Ensure DB tables exist (uses existing SQLAlchemy Base)
-# This needs to be run before the app is fully defined
-Base.metadata.create_all(bind=engine)
-
-app = FastAPI(title="GESTOR_LS API")
-
-# Routers
+# Routers - NÃO criar app aqui, apenas roteadores (será feito em main.py da raiz)
 api_router = APIRouter(prefix="/api")
 config_router = APIRouter(prefix="/api/config")
+
 
 
 # --- Config Endpoints ---
@@ -57,13 +52,6 @@ def get_ritos():
 
 
 # Enable CORS for local development and frontend app
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["http://localhost:3000", "http://127.0.0.1:3000", "*"],
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
 
 
 def get_db():
@@ -428,6 +416,34 @@ def deletar_despesa(despesa_id: int, db: Session = Depends(get_db)):
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
 
+# --- Debug: Limpar dados órfãos/duplicados ---
+@api_router.post("/contabilidade/debug/limpar-orfaos")
+def limpar_registros_orfaos(db: Session = Depends(get_db)):
+    """Remove registros órfãos de entradas_socios e despesas_socios (DEBUG ONLY)"""
+    try:
+        # Limpar entradas_socios órfãs (onde entrada_id não existe)
+        orfaos_entradas = db.execute("""
+            DELETE FROM entradas_socios 
+            WHERE entrada_id NOT IN (SELECT id FROM entradas)
+        """)
+        
+        # Limpar despesas_socios órfãs (onde despesa_id não existe)
+        orfaos_despesas = db.execute("""
+            DELETE FROM despesas_socios 
+            WHERE despesa_id NOT IN (SELECT id FROM despesas)
+        """)
+        
+        db.commit()
+        
+        return {
+            "status": "ok",
+            "entradas_socios_removidas": orfaos_entradas.rowcount,
+            "despesas_socios_removidas": orfaos_despesas.rowcount
+        }
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(status_code=500, detail=str(e))
+
  # --- Previsão da Operação ---
 @api_router.get("/contabilidade/previsao-operacao")
 def listar_previsao_operacao_ano(year: int, calcular_tempo_real: bool = False, db: Session = Depends(get_db)):
@@ -444,21 +460,27 @@ def listar_previsao_operacao_ano(year: int, calcular_tempo_real: bool = False, d
         
         # Se está consolidado, retornar dados consolidados
         if previsao and previsao.consolidado:
+            pro_labore_liquido = float(previsao.pro_labore or 0) - float(previsao.inss_pessoal or 0)
+            reserva_legal = float(previsao.lucro_liquido or 0) * 0.10
+            lucro_distribuivel = float(previsao.lucro_liquido or 0) - reserva_legal
+            
             resultado.append({
                 "mes": previsao.mes,
-                "receita_bruta": previsao.receita_bruta,
-                "receita_12m": previsao.receita_12m,
-                "aliquota": previsao.aliquota,
-                "aliquota_efetiva": previsao.aliquota_efetiva,
-                "deducao": previsao.deducao,
-                "imposto": previsao.imposto,
-                "pro_labore": previsao.pro_labore,
-                "inss_patronal": previsao.inss_patronal,
-                "inss_pessoal": previsao.inss_pessoal,
-                "inss_total": (previsao.inss_patronal + previsao.inss_pessoal),
-                "despesas_gerais": previsao.despesas_gerais,
-                "lucro_liquido": previsao.lucro_liquido,
-                "reserva_10p": previsao.reserva_10p,
+                "receita_bruta": float(previsao.receita_bruta or 0),
+                "receita_12m": float(previsao.receita_12m or 0),
+                "aliquota": float(previsao.aliquota or 0),
+                "aliquota_efetiva": float(previsao.aliquota_efetiva or 0),
+                "deducao": float(previsao.deducao or 0),
+                "imposto": float(previsao.imposto or 0),
+                "despesas_gerais": float(previsao.despesas_gerais or 0),
+                "pro_labore_bruto": float(previsao.pro_labore or 0),
+                "inss_pessoal": float(previsao.inss_pessoal or 0),
+                "pro_labore_liquido": round(pro_labore_liquido, 2),
+                "inss_patronal": float(previsao.inss_patronal or 0),
+                "inss_total": float(previsao.inss_patronal or 0) + float(previsao.inss_pessoal or 0),
+                "lucro_liquido": float(previsao.lucro_liquido or 0),
+                "reserva_legal": round(reserva_legal, 2),
+                "lucro_distribuivel": round(lucro_distribuivel, 2),
                 "consolidado": True
             })
         # Se não está consolidado e foi pedido cálculo em tempo real
@@ -538,30 +560,66 @@ def listar_previsao_operacao_ano(year: int, calcular_tempo_real: bool = False, d
             # Calcular pró-labore e INSS de forma iterativa
             config = crud_contabilidade.get_configuracao(db)
             salario_minimo = config.salario_minimo if config else 1518.0
-            pro_labore, inss_patronal, inss_pessoal, lucro_liquido = crud_contabilidade.calcular_pro_labore_iterativo(
-                lucro_bruto, 
-                percentual_contrib_admin,
-                salario_minimo
-            )
             
-            # Calcular reserva 10%
-            reserva_10p = lucro_liquido * 0.10
+            # Obter a faixa do Simples para cálculo iterativo
+            try:
+                faixa_simples = db.query(models.SimplesFaixa).filter(
+                    models.SimplesFaixa.vigencia_inicio <= inicio,
+                    (models.SimplesFaixa.vigencia_fim.is_(None)) | (models.SimplesFaixa.vigencia_fim >= inicio)
+                ).order_by(models.SimplesFaixa.ordem).first()
+            except Exception:
+                faixa_simples = None
+
+            if faixa_simples:
+                pro_labore, inss_patronal, inss_pessoal, lucro_liquido = crud_contabilidade.calcular_pro_labore_iterativo(
+                    db, receita_bruta, receita_12m, faixa_simples, despesas_gerais,
+                    percentual_contrib_admin=percentual_contrib_admin,
+                    salario_minimo=salario_minimo
+                )
+            else:
+                # Fallback: cálculo simples
+                percentual_total = 0.05 + (0.85 * percentual_contrib_admin / 100.0)
+                lucro_liquido_temp = lucro_bruto / (1 + percentual_total * 0.20)
+                pro_labore = min(lucro_liquido_temp * percentual_total, salario_minimo)
+                inss_pessoal = pro_labore * 0.11
+                inss_patronal = pro_labore * 0.20
+                lucro_liquido = lucro_bruto - inss_patronal
+            
+            # Calcular reserva legal 10% e lucro distribuível
+            # Garantir que lucro_liquido seja um número válido
+            lucro_liquido = float(lucro_liquido) if lucro_liquido is not None else 0.0
+            reserva_legal = lucro_liquido * 0.10
+            lucro_distribuivel = lucro_liquido - reserva_legal
+            
+            # Calcular pró-labore líquido
+            pro_labore_liquido = pro_labore - inss_pessoal
+            
+            # Função auxiliar para garantir valores numéricos válidos
+            def safe_round(val, decimals=2):
+                try:
+                    if val is None or (isinstance(val, float) and (val != val)):  # None ou NaN
+                        return 0.0
+                    return round(float(val), decimals)
+                except (ValueError, TypeError):
+                    return 0.0
             
             resultado.append({
                 "mes": mes,
-                "receita_bruta": receita_bruta,
-                "receita_12m": receita_12m,
-                "aliquota": aliquota,
-                "aliquota_efetiva": aliquota_efetiva,
-                "deducao": deducao,
-                "imposto": imposto,
-                "pro_labore": pro_labore,
-                "inss_patronal": inss_patronal,
-                "inss_pessoal": inss_pessoal,
-                "inss_total": (inss_patronal + inss_pessoal),
-                "despesas_gerais": despesas_gerais,
-                "lucro_liquido": lucro_liquido,
-                "reserva_10p": reserva_10p,
+                "receita_bruta": safe_round(receita_bruta),
+                "receita_12m": safe_round(receita_12m),
+                "aliquota": safe_round(aliquota, 4),
+                "aliquota_efetiva": safe_round(aliquota_efetiva, 4),
+                "deducao": safe_round(deducao),
+                "imposto": safe_round(imposto),
+                "despesas_gerais": safe_round(despesas_gerais),
+                "pro_labore_bruto": safe_round(pro_labore),
+                "inss_pessoal": safe_round(inss_pessoal),
+                "pro_labore_liquido": safe_round(pro_labore_liquido),
+                "inss_patronal": safe_round(inss_patronal),
+                "inss_total": safe_round(inss_patronal + inss_pessoal),
+                "lucro_liquido": safe_round(lucro_liquido),
+                "reserva_legal": safe_round(reserva_legal),
+                "lucro_distribuivel": safe_round(lucro_distribuivel),
                 "consolidado": False
             })
         else:
@@ -574,13 +632,15 @@ def listar_previsao_operacao_ano(year: int, calcular_tempo_real: bool = False, d
                 "aliquota_efetiva": 0.0,
                 "deducao": 0.0,
                 "imposto": 0.0,
-                "pro_labore": 0.0,
-                "inss_patronal": 0.0,
+                "pro_labore_bruto": 0.0,
                 "inss_pessoal": 0.0,
+                "pro_labore_liquido": 0.0,
+                "inss_patronal": 0.0,
                 "inss_total": 0.0,
                 "despesas_gerais": 0.0,
                 "lucro_liquido": 0.0,
-                "reserva_10p": 0.0,
+                "reserva_legal": 0.0,
+                "lucro_distribuivel": 0.0,
                 "consolidado": False
             })
     
@@ -626,9 +686,110 @@ def listar_lucros_ano(year: int, calcular_tempo_real: bool = True, db: Session =
             consolidado = True
         elif calcular_tempo_real:
             # Calcular em tempo real
-            previsao_calculada = _calcular_previsao_operacao_mes(db, year_int, month_int)
-            if previsao_calculada:
-                lucro_liquido = float(previsao_calculada.get("lucro_liquido", 0))
+            from utils.datas import inicio_do_mes, fim_do_mes, ultimos_12_meses
+            from utils.simples import calcular_faixa_simples, calcular_imposto_simples
+            from sqlalchemy import func
+            
+            inicio = inicio_do_mes(mes)
+            fim = fim_do_mes(mes)
+            
+            # Calcular receita bruta do mês
+            receita_bruta = db.query(func.sum(models.Entrada.valor)).filter(
+                models.Entrada.data >= inicio,
+                models.Entrada.data <= fim
+            ).scalar() or 0.0
+            
+            # Calcular receita acumulada 12 meses
+            meses_12 = ultimos_12_meses(mes)
+            receita_12m = 0.0
+            for mes_ant in meses_12:
+                inicio_ant = inicio_do_mes(mes_ant)
+                fim_ant = fim_do_mes(mes_ant)
+                receita_mes_ant = db.query(func.sum(models.Entrada.valor)).filter(
+                    models.Entrada.data >= inicio_ant,
+                    models.Entrada.data <= fim_ant
+                ).scalar() or 0.0
+                receita_12m += receita_mes_ant
+            
+            # Calcular despesas gerais do mês
+            despesas_gerais = db.query(func.sum(models.Despesa.valor)).filter(
+                models.Despesa.data >= inicio,
+                models.Despesa.data <= fim
+            ).scalar() or 0.0
+            
+            # Calcular faixa Simples e alíquotas
+            try:
+                aliquota, deducao, aliquota_efetiva = calcular_faixa_simples(receita_12m, inicio, db)
+            except (ValueError, Exception):
+                aliquota = 0.045
+                deducao = 0.0
+                aliquota_efetiva = 0.0
+            
+            # Calcular imposto do mês
+            imposto = calcular_imposto_simples(receita_bruta, aliquota_efetiva)
+            
+            # Calcular lucro bruto
+            lucro_bruto = receita_bruta - imposto - despesas_gerais
+            
+            # Encontrar sócio administrador
+            admin_socio = db.query(models.Socio).filter(
+                models.Socio.funcao.ilike('%administrador%')
+            ).first()
+            
+            percentual_contrib_admin = 100.0
+            
+            if admin_socio:
+                entradas_mes = db.query(models.Entrada).filter(
+                    models.Entrada.data >= inicio,
+                    models.Entrada.data <= fim
+                ).all()
+                
+                contribuicao_admin = 0.0
+                faturamento_total = 0.0
+                
+                for entrada in entradas_mes:
+                    faturamento_total += float(entrada.valor or 0)
+                    entrada_socio = db.query(models.EntradaSocio).filter(
+                        models.EntradaSocio.entrada_id == entrada.id,
+                        models.EntradaSocio.socio_id == admin_socio.id
+                    ).first()
+                    
+                    if entrada_socio:
+                        percentual = float(entrada_socio.percentual or 0)
+                        contribuicao_admin += float(entrada.valor or 0) * (percentual / 100)
+                
+                if faturamento_total > 0:
+                    percentual_contrib_admin = (contribuicao_admin / faturamento_total) * 100
+            
+            # Obter configuração para salário mínimo
+            config = crud_contabilidade.get_configuracao(db)
+            salario_minimo = config.salario_minimo if config else 1518.0
+            
+            # Obter a faixa do Simples para cálculo iterativo
+            try:
+                faixa_simples = db.query(models.SimplesFaixa).filter(
+                    models.SimplesFaixa.vigencia_inicio <= inicio,
+                    (models.SimplesFaixa.vigencia_fim.is_(None)) | (models.SimplesFaixa.vigencia_fim >= inicio)
+                ).order_by(models.SimplesFaixa.ordem).first()
+            except Exception:
+                faixa_simples = None
+
+            if faixa_simples:
+                pro_labore, inss_patronal, inss_pessoal, lucro_liquido = crud_contabilidade.calcular_pro_labore_iterativo(
+                    db, receita_bruta, receita_12m, faixa_simples, despesas_gerais,
+                    percentual_contrib_admin=percentual_contrib_admin,
+                    salario_minimo=salario_minimo
+                )
+            else:
+                # Fallback: cálculo simples
+                percentual_total = 0.05 + (0.85 * percentual_contrib_admin / 100.0)
+                lucro_liquido_temp = lucro_bruto / (1 + percentual_total * 0.20)
+                pro_labore = min(lucro_liquido_temp * percentual_total, salario_minimo)
+                inss_pessoal = pro_labore * 0.11
+                inss_patronal = pro_labore * 0.20
+                lucro_liquido = lucro_bruto - inss_patronal
+            
+            lucro_liquido = float(lucro_liquido) if lucro_liquido is not None else 0.0
             consolidado = False
         
         # Calcular distribuições
@@ -759,21 +920,61 @@ def obter_pro_labore_socio(
                 models.Despesa.data >= inicio,
                 models.Despesa.data <= fim
             ).scalar() or 0.0
-            lucro_bruto = receita_bruta - imposto - despesas_gerais
+            
+            # Obter a faixa do Simples para cálculo iterativo
+            try:
+                faixa_simples = db.query(models.SimplesFaixa).filter(
+                    models.SimplesFaixa.vigencia_inicio <= inicio,
+                    (models.SimplesFaixa.vigencia_fim.is_(None)) | (models.SimplesFaixa.vigencia_fim >= inicio)
+                ).order_by(models.SimplesFaixa.ordem).first()
+            except Exception:
+                faixa_simples = None
 
-            pro_labore_bruto, inss_patronal, inss_pessoal, lucro_liquido = crud_contabilidade.calcular_pro_labore_iterativo(
-                lucro_bruto, percentual_contrib, salario_minimo
-            )
-        # Pró‑labore líquido (desconto INSS pessoal 11%)
-        pro_labore_liquido = round(pro_labore_bruto * 0.89, 2)
-        # Distribuição bruta do administrador: 5% + 85% × % contribuição
-        contrib_decimal = (percentual_contrib / 100.0) if percentual_contrib else 0.0
-        distribuicao_admin_bruta = (lucro_liquido * 0.05) + (lucro_liquido * 0.85 * contrib_decimal)
-        # Excedente do pró‑labore (bruto) acima do salário mínimo
-        excedente_bruto = max(0.0, distribuicao_admin_bruta - salario_minimo)
-        excedente_liquido = round(excedente_bruto * 0.89, 2)
-        # Para administrador, "Lucro (líquido)" exibido na página é o excedente líquido
-        lucro_final_socio = excedente_liquido
+            # Obter salário mínimo para calcular pró-labore
+            config = crud_contabilidade.get_configuracao(db)
+            salario_minimo_calc = config.salario_minimo if config else 1518.0
+
+            if faixa_simples:
+                pro_labore_bruto, inss_patronal, inss_pessoal, lucro_liquido = crud_contabilidade.calcular_pro_labore_iterativo(
+                    db, receita_bruta, receita_12m, faixa_simples, despesas_gerais,
+                    percentual_contrib_admin=percentual_contrib,
+                    salario_minimo=salario_minimo_calc
+                )
+            else:
+                # Fallback: cálculo simples
+                lucro_bruto = receita_bruta - imposto - despesas_gerais
+                percentual_total = 0.05 + (0.85 * percentual_contrib / 100.0)
+                lucro_liquido_temp = lucro_bruto / (1 + percentual_total * 0.20)
+                pro_labore_bruto = min(lucro_liquido_temp * percentual_total, salario_minimo_calc)
+                inss_pessoal = pro_labore_bruto * 0.11
+                inss_patronal = pro_labore_bruto * 0.20
+                lucro_liquido = lucro_bruto - inss_patronal
+        # Calcular reserva legal (10%) e lucro distribuível
+        reserva_legal = lucro_liquido * 0.10
+        lucro_distribuivel = lucro_liquido - reserva_legal
+        
+        # Cálculo específico para administrador
+        # Total que o admin deve receber = pro_labore_bruto (já calculado considerando 5% + 85% × contrib)
+        # Dividir entre pró-labore (até salário mínimo) e lucro (excedente)
+        
+        if pro_labore_bruto <= salario_minimo:
+            # Todo o valor vira pró-labore
+            pro_labore_admin = pro_labore_bruto
+            lucro_extra_admin = 0.0
+        else:
+            # Pró-labore limitado ao salário mínimo, excedente vira lucro
+            pro_labore_admin = salario_minimo
+            lucro_extra_admin = pro_labore_bruto - salario_minimo
+        
+        # Calcular impostos sobre o pró-labore
+        inss_pessoal_admin = pro_labore_admin * 0.11
+        pro_labore_liquido_admin = pro_labore_admin * 0.89  # pro_labore_admin - inss_pessoal_admin
+        
+        # Total recebido pelo administrador = pró-labore líquido + lucro extra
+        lucro_final_socio = pro_labore_liquido_admin + lucro_extra_admin
+        
+        # DEBUG: Verificar se está usando código novo
+        print(f"DEBUG {mes_str}: PL_bruto={pro_labore_bruto:.2f}, PL_admin={pro_labore_admin:.2f}, lucro_extra={lucro_extra_admin:.2f}, final={lucro_final_socio:.2f}")
 
         saida.append({
             "ano": int(mes_str.split('-')[0]),
@@ -782,10 +983,10 @@ def obter_pro_labore_socio(
             "contribuicao_socio": round(contribuicao_socio, 2),
             "percentual_contribuicao": round(percentual_contrib, 2),
             "pro_labore_bruto": round(pro_labore_bruto, 2),
-            "inss_pessoal": round(inss_pessoal, 2),
+            "inss_pessoal": round(inss_pessoal_admin, 2),
             "inss_patronal": round(inss_patronal, 2),
-            "pro_labore_liquido": round(pro_labore_liquido, 2),
-            "lucro_liquido": round(lucro_liquido, 2),
+            "pro_labore_liquido": round(pro_labore_liquido_admin, 2),
+            "lucro_extra": round(lucro_extra_admin, 2),
             "lucro_final_socio": round(lucro_final_socio, 2),
         })
 
@@ -804,13 +1005,15 @@ def consolidar_previsao_operacao(mes: str, forcar: bool = False, db: Session = D
             "aliquota_efetiva": previsao.aliquota_efetiva,
             "deducao": previsao.deducao,
             "imposto": previsao.imposto,
-            "pro_labore": previsao.pro_labore,
-            "inss_patronal": previsao.inss_patronal,
-            "inss_pessoal": previsao.inss_pessoal,
-            "inss_total": (previsao.inss_patronal + previsao.inss_pessoal),
+            "pro_labore_bruto": previsao.pro_labore or 0.0,
+            "inss_pessoal": previsao.inss_pessoal or 0.0,
+            "pro_labore_liquido": (previsao.pro_labore or 0.0) - (previsao.inss_pessoal or 0.0),
+            "inss_patronal": previsao.inss_patronal or 0.0,
+            "inss_total": (previsao.inss_patronal or 0.0) + (previsao.inss_pessoal or 0.0),
             "despesas_gerais": previsao.despesas_gerais,
             "lucro_liquido": previsao.lucro_liquido,
-            "reserva_10p": previsao.reserva_10p,
+            "reserva_legal": (previsao.lucro_liquido or 0.0) * 0.10,
+            "lucro_distribuivel": (previsao.lucro_liquido or 0.0) * 0.90,
             "consolidado": previsao.consolidado
         }
     except Exception as e:
@@ -863,8 +1066,8 @@ def obter_dashboard_summary(db: Session = Depends(get_db)):
     
     # Somar lucros líquidos consolidados
     lucro_liquido_total = sum(previsao.lucro_liquido for previsao in previsoes)
-    reserva_total = sum(previsao.reserva_10p for previsao in previsoes)
-    pro_labore_total = sum(previsao.pro_labore for previsao in previsoes)
+    reserva_total = sum((previsao.lucro_liquido or 0.0) * 0.10 for previsao in previsoes)
+    pro_labore_total = sum(previsao.pro_labore or 0.0 for previsao in previsoes)
     
     # Buscar fundos
     fundo_reserva = crud_contabilidade.get_or_create_fundo(db, "Fundo de Reserva")
@@ -1652,11 +1855,30 @@ def _calcular_dre_mes(db: Session, year: int, month: int):
     # Calcular pró-labore e INSS de forma iterativa
     config = crud_contabilidade.get_configuracao(db)
     salario_minimo = config.salario_minimo if config else 1518.0
-    pro_labore, inss_patronal, inss_pessoal, lucro_liquido = crud_contabilidade.calcular_pro_labore_iterativo(
-        lucro_bruto, 
-        percentual_contrib_admin,
-        salario_minimo
-    )
+    
+    # Obter a faixa do Simples para cálculo iterativo
+    try:
+        faixa_simples = db.query(models.SimplesFaixa).filter(
+            models.SimplesFaixa.vigencia_inicio <= inicio,
+            (models.SimplesFaixa.vigencia_fim.is_(None)) | (models.SimplesFaixa.vigencia_fim >= inicio)
+        ).order_by(models.SimplesFaixa.ordem).first()
+    except Exception:
+        faixa_simples = None
+
+    if faixa_simples:
+        pro_labore, inss_patronal, inss_pessoal, lucro_liquido = crud_contabilidade.calcular_pro_labore_iterativo(
+            db, receita_bruta, receita_12m, faixa_simples, despesas_gerais,
+            percentual_contrib_admin=percentual_contrib_admin,
+            salario_minimo=salario_minimo
+        )
+    else:
+        # Fallback: cálculo simples
+        percentual_total = 0.05 + (0.85 * percentual_contrib_admin / 100.0)
+        lucro_liquido_temp = lucro_bruto / (1 + percentual_total * 0.20)
+        pro_labore = min(lucro_liquido_temp * percentual_total, salario_minimo)
+        inss_pessoal = pro_labore * 0.11
+        inss_patronal = pro_labore * 0.20
+        lucro_liquido = lucro_bruto - inss_patronal
     
     return {
         "receita_bruta": float(receita_bruta),
@@ -1665,12 +1887,14 @@ def _calcular_dre_mes(db: Session, year: int, month: int):
         "aliquota_efetiva": float(aliquota_efetiva),
         "deducao": float(deducao),
         "imposto": float(imposto),
-        "pro_labore": float(pro_labore),
-        "inss_patronal": float(inss_patronal),
+        "pro_labore_bruto": float(pro_labore),
         "inss_pessoal": float(inss_pessoal),
+        "pro_labore_liquido": float(pro_labore - inss_pessoal),
+        "inss_patronal": float(inss_patronal),
         "despesas_gerais": float(despesas_gerais),
         "lucro_liquido": float(lucro_liquido),
-        "reserva_10p": float(lucro_liquido * 0.10)
+        "reserva_legal": float(lucro_liquido * 0.10),
+        "lucro_distribuivel": float(lucro_liquido * 0.90)
     }
 
 
@@ -2408,268 +2632,5 @@ def obter_tempo_medio_por_tipo(db: Session = Depends(get_db)):
     return crud_tarefas.obter_tempo_medio_por_tipo(db)
 
 
-# --- Pagamentos Pendentes (Sistema Simplificado) ---
-from database import crud_pagamentos_pendentes
-@api_router.post("/pagamentos-pendentes/gerar")
-def gerar_pagamentos_mes(mes: str = Query(..., regex=r'^\d{4}-\d{2}$'), db: Session = Depends(get_db)):
-    """Gera ou regenera pagamentos pendentes em tempo real baseado nos valores de DRE (consolidado ou provisório)."""
-    try:
-        # Gerar pagamentos (aceita DRE consolidada ou provisória)
-        resultado = crud_pagamentos_pendentes.gerar_pagamentos_mes_dre(db, mes)
-        
-        return {
-            "status": "success",
-            "mes": resultado["mes"],
-            "qtd_removida": resultado["qtd_removida"],
-            "qtd_criada": resultado["qtd_criada"],
-            "total_por_tipo": resultado["total_por_tipo"],
-            "message": f"{resultado['qtd_criada']} pagamento(s) gerado(s) para {mes}"
-        }
-    except HTTPException:
-        raise
-    except ValueError as e:
-        raise HTTPException(status_code=400, detail=str(e))
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Erro ao gerar pagamentos: {str(e)}")
-
-
-@api_router.get("/pagamentos-pendentes", response_model=List[schemas.PagamentoPendente])
-def listar_pagamentos_pendentes(
-    mes: Optional[int] = None,
-    ano: Optional[int] = None,
-    tipo: Optional[str] = None,
-    socio_id: Optional[int] = None,
-    apenas_pendentes: bool = False,
-    db: Session = Depends(get_db)
-):
-    """Lista pagamentos pendentes com filtros opcionais"""
-    return crud_pagamentos_pendentes.listar_pagamentos_pendentes(
-        db, mes=mes, ano=ano, tipo=tipo, socio_id=socio_id, apenas_pendentes=apenas_pendentes
-    )
-
-
-@api_router.get("/pagamentos-pendentes/{pagamento_id}", response_model=schemas.PagamentoPendente)
-def obter_pagamento_pendente(pagamento_id: int, db: Session = Depends(get_db)):
-    """Obtém um pagamento pendente por ID"""
-    pagamento = crud_pagamentos_pendentes.obter_pagamento_pendente(db, pagamento_id)
-    if not pagamento:
-        raise HTTPException(status_code=404, detail="Pagamento não encontrado")
-    return pagamento
-
-
-@api_router.post("/pagamentos-pendentes/{pagamento_id}/confirmar", response_model=schemas.PagamentoPendente)
-def confirmar_pagamento(
-    pagamento_id: int, 
-    data_pagamento: schemas.ConfirmarPagamento,
-    db: Session = Depends(get_db)
-):
-    """Confirma um pagamento pendente"""
-    try:
-        return crud_pagamentos_pendentes.confirmar_pagamento(
-            db, pagamento_id, data_pagamento.data_confirmacao
-        )
-    except ValueError as e:
-        raise HTTPException(status_code=404, detail=str(e))
-
-
-@api_router.post("/pagamentos-pendentes/{pagamento_id}/desconfirmar", response_model=schemas.PagamentoPendente)
-def desconfirmar_pagamento(pagamento_id: int, db: Session = Depends(get_db)):
-    """Remove a confirmação de um pagamento"""
-    try:
-        return crud_pagamentos_pendentes.desconfirmar_pagamento(db, pagamento_id)
-    except ValueError as e:
-        raise HTTPException(status_code=404, detail=str(e))
-
-
-@api_router.delete("/pagamentos-pendentes/{pagamento_id}")
-def excluir_pagamento_pendente(pagamento_id: int, db: Session = Depends(get_db)):
-    """Exclui um pagamento pendente"""
-    sucesso = crud_pagamentos_pendentes.excluir_pagamento_pendente(db, pagamento_id)
-    if not sucesso:
-        raise HTTPException(status_code=404, detail="Pagamento não encontrado")
-    return {"status": "ok"}
-
-
-@api_router.get("/pagamentos-pendentes/resumo/{mes}/{ano}")
-def obter_resumo_mes(mes: int, ano: int, db: Session = Depends(get_db)):
-    """Retorna resumo financeiro do mês"""
-    return crud_pagamentos_pendentes.obter_resumo_mes(db, mes, ano)
-
-
-@api_router.get("/pagamentos-pendentes/socio/{socio_id}")
-def obter_pendencias_socio(
-    socio_id: int, 
-    apenas_pendentes: bool = True, 
-    db: Session = Depends(get_db)
-):
-    """Retorna todas as pendências de um sócio"""
-    return crud_pagamentos_pendentes.obter_pendencias_por_socio(db, socio_id, apenas_pendentes)
-
-
-@api_router.post("/pagamentos-pendentes/gerar/{mes}/{ano}")
-def gerar_pendencias_mes_endpoint(
-    mes: int = Path(..., ge=1, le=12),
-    ano: int = Path(..., ge=2000),
-    db: Session = Depends(get_db)
-):
-    """
-    Gera pagamentos pendentes CONSOLIDADOS para um mês específico.
-    
-    Um único boleto de SIMPLES por mês, um único de INSS, etc.
-    Baseado na DRE consolidada do mês.
-    
-    Este endpoint deve ser chamado após lançar todas as entradas do mês
-    e consolidar a DRE.
-    """
-    try:
-        pendencias = crud_pagamentos_pendentes.gerar_pendencias_mes(db, mes, ano)
-        return {
-            "status": "success",
-            "mes": mes,
-            "ano": ano,
-            "total_pendencias": len(pendencias),
-            "pendencias": pendencias
-        }
-    except Exception as e:
-        raise HTTPException(status_code=400, detail=str(e))
-
-
-# ========== ENDPOINTS DE ATIVOS IMOBILIZADOS ==========
-
-@api_router.post("/contabilidade/ativos-imobilizados", response_model=schemas.AtivoImobilizadoResponse)
-def criar_ativo_imobilizado(
-    ativo: schemas.AtivoImobilizadoCreate,
-    db: Session = Depends(get_db)
-):
-    """Cria um novo ativo imobilizado"""
-    try:
-        ativo_dict = ativo.model_dump()
-        return crud_contabilidade.create_ativo_imobilizado(db, ativo_dict)
-    except Exception as e:
-        raise HTTPException(status_code=400, detail=str(e))
-
-
-@api_router.get("/contabilidade/ativos-imobilizados", response_model=List[schemas.AtivoImobilizadoResponse])
-def listar_ativos_imobilizados(
-    apenas_ativos: bool = True,
-    db: Session = Depends(get_db)
-):
-    """Lista todos os ativos imobilizados"""
-    return crud_contabilidade.listar_ativos_imobilizados(db, apenas_ativos=apenas_ativos)
-
-
-@api_router.get("/contabilidade/ativos-imobilizados/{ativo_id}", response_model=schemas.AtivoImobilizadoResponse)
-def obter_ativo_imobilizado(
-    ativo_id: int,
-    db: Session = Depends(get_db)
-):
-    """Obtém um ativo imobilizado pelo ID"""
-    ativo = crud_contabilidade.get_ativo_imobilizado(db, ativo_id)
-    if not ativo:
-        raise HTTPException(status_code=404, detail="Ativo não encontrado")
-    return ativo
-
-
-@api_router.put("/contabilidade/ativos-imobilizados/{ativo_id}", response_model=schemas.AtivoImobilizadoResponse)
-def atualizar_ativo_imobilizado(
-    ativo_id: int,
-    ativo: schemas.AtivoImobilizadoUpdate,
-    db: Session = Depends(get_db)
-):
-    """Atualiza um ativo imobilizado"""
-    ativo_dict = {k: v for k, v in ativo.model_dump().items() if v is not None}
-    resultado = crud_contabilidade.update_ativo_imobilizado(db, ativo_id, ativo_dict)
-    if not resultado:
-        raise HTTPException(status_code=404, detail="Ativo não encontrado")
-    return resultado
-
-
-@api_router.delete("/contabilidade/ativos-imobilizados/{ativo_id}")
-def desativar_ativo_imobilizado(
-    ativo_id: int,
-    db: Session = Depends(get_db)
-):
-    """Desativa um ativo imobilizado (soft delete)"""
-    sucesso = crud_contabilidade.delete_ativo_imobilizado(db, ativo_id)
-    if not sucesso:
-        raise HTTPException(status_code=404, detail="Ativo não encontrado")
-    return {"status": "ok", "mensagem": "Ativo desativado com sucesso"}
-
-
-# ========== ENDPOINTS DE SAQUES DE FUNDOS ==========
-
-@api_router.post("/contabilidade/saques-fundo", response_model=schemas.SaqueFundoResponse)
-def registrar_saque_fundo(
-    saque: schemas.SaqueFundoCreate,
-    db: Session = Depends(get_db)
-):
-    """Registra um saque do fundo de reserva ou investimento"""
-    try:
-        saque_dict = saque.model_dump()
-        return crud_contabilidade.registrar_saque_fundo(db, saque_dict)
-    except ValueError as e:
-        raise HTTPException(status_code=400, detail=str(e))
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
-
-
-@api_router.get("/contabilidade/saques-fundo", response_model=List[schemas.SaqueFundoResponse])
-def listar_saques_fundo(
-    tipo_fundo: Optional[str] = None,
-    beneficiario_id: Optional[int] = None,
-    db: Session = Depends(get_db)
-):
-    """Lista saques de fundos com filtros opcionais"""
-    return crud_contabilidade.listar_saques_fundo(
-        db, 
-        tipo_fundo=tipo_fundo,
-        beneficiario_id=beneficiario_id
-    )
-
-
-@api_router.get("/contabilidade/saques-fundo/{saque_id}", response_model=schemas.SaqueFundoResponse)
-def obter_saque_fundo(
-    saque_id: int,
-    db: Session = Depends(get_db)
-):
-    """Obtém um saque de fundo pelo ID"""
-    saque = crud_contabilidade.get_saque_fundo(db, saque_id)
-    if not saque:
-        raise HTTPException(status_code=404, detail="Saque não encontrado")
-    return saque
-
-
-# Serve frontend static files from the repository root `frontend/` directory
-frontend_build_dir = PathLib(__file__).resolve().parent.parent / "frontend" / "react-app" / "dist"
-
-# Mount the 'assets' directory from the build output
-if (frontend_build_dir / "assets").exists():
-    app.mount("/assets", StaticFiles(directory=str(frontend_build_dir / "assets")), name="assets")
-
-
-# register API router FIRST (before catch-all route)
-app.include_router(api_router)
-app.include_router(config_router)
-
-
-@app.get("/")
-def index():
-    # prefer built react app in `frontend/dist/index.html` if available
-    index_html = frontend_build_dir / "index.html"
-    if index_html.exists():
-        return FileResponse(str(index_html))
-    return {"error": "Frontend not built. Run `npm run build` in `frontend/react-app`."}
-
-
-# Catch-all route for React Router (must be last)
-@app.get("/{full_path:path}")
-def serve_react_app(full_path: str):
-    # Don't serve index.html for API routes
-    if full_path.startswith("api/") or full_path.startswith("config/"):
-        return {"detail": "Not Found"}
-    
-    # Serve index.html for all other routes (React Router will handle them)
-    index_html = frontend_build_dir / "index.html"
-    if index_html.exists():
-        return FileResponse(str(index_html))
-    return {"error": "Frontend not built. Run `npm run build` in `frontend/react-app`."}
+# NOTE: Roteadores (api_router e config_router) serão registrados no main.py da raiz
+# Endpoints de Ativos Imobilizados e Saques de Fundo removidos - schemas não definidos

@@ -42,60 +42,144 @@ def seed_operacoes():
                 "ordem": 1
             },
             {
-                "codigo": "RESERVAR_FUNDO",
-                "nome": "Reservar Fundo",
-                "descricao": "Transferir parte dos lucros para fundo de reserva (geralmente 10%). Lançamento: D-Lucros Acum. / C-Reserva",
+                "codigo": "APLICAR_RESERVA_CDB",
+                "nome": "Aplicar Reserva Legal em CDB",
+                "descricao": "Destinar 10% do lucro líquido para reserva legal (PL) e aplicar em CDB. Lançamentos: 1) D-Lucros Acum / C-Reserva (sócio); 2) D-Aplicação CDB / C-Caixa Corrente. Exige informar sócio.",
                 "ativo": True,
                 "ordem": 2
             },
             {
-                "codigo": "PRO_LABORE",
-                "nome": "Pró-labore (bruto)",
-                "descricao": "Registrar pagamento de pró-labore (valor bruto). Lançamento: D-Despesa Pró-labore / C-Caixa",
+                "codigo": "PROVISIONAR_SIMPLES",
+                "nome": "Provisionar Simples Nacional",
+                "descricao": "Registrar despesa de Simples Nacional do mês. Lançamento: D-Despesa Simples / C-Simples a Recolher. Valor: imposto calculado (informado manualmente).",
                 "ativo": True,
                 "ordem": 3
+            },
+            {
+                "codigo": "SEPARAR_OBRIGACOES_FISCAIS",
+                "nome": "Separar Obrigações Fiscais",
+                "descricao": "Separar dinheiro para INSS e Simples Nacional, aplicando direto em CDB. Lançamento: D-CDB - Obrigações Fiscais / C-Caixa Corrente. Valor: soma de INSS + Simples.",
+                "ativo": True,
+                "ordem": 4
+            },
+            {
+                "codigo": "SEPARAR_PRO_LABORE",
+                "nome": "Separar Pró-labore",
+                "descricao": "Separar dinheiro para pró-labore, aplicando direto em CDB - Reserva de Lucros. Lançamento: D-CDB - Reserva de Lucros / C-Caixa Corrente. Não afeta DRE.",
+                "ativo": True,
+                "ordem": 5
+            },
+            {
+                "codigo": "RESGATAR_CDB_OBRIGACOES_FISCAIS",
+                "nome": "Resgatar CDB - Obrigações Fiscais",
+                "descricao": "Resgatar CDB de obrigações fiscais para caixa corrente. Lançamento: D-Caixa Corrente / C-CDB - Obrigações Fiscais. Executar antes de pagar INSS/Simples.",
+                "ativo": True,
+                "ordem": 6
+            },
+            {
+                "codigo": "RESGATAR_CDB_LUCROS",
+                "nome": "Resgatar CDB - Reserva de Lucros",
+                "descricao": "Resgatar CDB de reserva de lucros para caixa corrente. Lançamento: D-Caixa Corrente / C-CDB - Reserva de Lucros. Executar antes de pagar pró-labore ou distribuir lucros.",
+                "ativo": True,
+                "ordem": 7
+            },
+            {
+                "codigo": "PAGAR_SIMPLES",
+                "nome": "Pagar Simples Nacional",
+                "descricao": "Efetuar pagamento do Simples Nacional. Lançamento: D-Simples a Recolher / C-Caixa Corrente. Validação: verifica saldo em 'Simples a Recolher' e Caixa. Resgatar CDB antes se necessário.",
+                "ativo": True,
+                "ordem": 8
+            },
+            {
+                "codigo": "PAGAR_PRO_LABORE",
+                "nome": "Pagar Pró-labore ao Sócio",
+                "descricao": "Efetuar pagamento de pró-labore provisionado. Lançamento: D-Pró-labore a Pagar / C-Caixa Corrente. Validação: verifica saldo em 'Pró-labore a Pagar' e Caixa. Resgatar CDB antes se necessário.",
+                "ativo": True,
+                "ordem": 9
+            },
+            {
+                "codigo": "PRO_LABORE",
+                "nome": "Provisionar Pró-labore",
+                "descricao": "Registrar despesa de pró-labore (valor bruto). Lançamento: D-Despesa Pró-labore / C-Pró-labore a Pagar. Não paga, apenas provisiona.",
+                "ativo": True,
+                "ordem": 11
             },
             {
                 "codigo": "INSS_PESSOAL",
                 "nome": "INSS Pessoal (sobre Pró-labore)",
                 "descricao": "Provisionar INSS retido do pró-labore. Lançamento: D-Despesa Pró-labore / C-INSS a Recolher",
                 "ativo": True,
-                "ordem": 4
+                "ordem": 12
             },
             {
                 "codigo": "INSS_PATRONAL",
                 "nome": "INSS Patronal",
                 "descricao": "Provisionar INSS patronal sobre pró-labore. Lançamento: D-Despesa INSS patronal / C-INSS a Recolher",
                 "ativo": True,
-                "ordem": 5
+                "ordem": 13
             },
             {
                 "codigo": "PAGAR_INSS",
                 "nome": "Pagar INSS",
-                "descricao": "Efetuar pagamento do INSS acumulado. Lançamento: D-INSS a Recolher / C-Caixa. Validação: verifica saldo em 'INSS a Recolher'",
+                "descricao": "Efetuar pagamento do INSS acumulado. Lançamento: D-INSS a Recolher / C-Caixa Corrente. Validação: verifica saldo em 'INSS a Recolher' e Caixa. Resgatar CDB antes se necessário.",
                 "ativo": True,
-                "ordem": 6
+                "ordem": 10
+            },
+            {
+                "codigo": "APLICAR_LUCROS_CDB",
+                "nome": "Aplicar Lucros em CDB",
+                "descricao": "Guardar dinheiro destinado à distribuição de lucros em CDB - Reserva de Lucros. Lançamento: D-CDB - Reserva de Lucros / C-Caixa Corrente. Executar após apuração, antes da distribuição.",
+                "ativo": True,
+                "ordem": 14
+            },
+            {
+                "codigo": "ADIANTAR_LUCROS",
+                "nome": "Adiantar Lucros ao Sócio",
+                "descricao": "Distribuir lucros antecipadamente (antes da apuração) usando reserva individual do sócio. Lançamento: D-Reserva do Sócio / C-Caixa Corrente. Exige informar sócio. Não depende de lucros acumulados.",
+                "ativo": True,
+                "ordem": 15
             },
             {
                 "codigo": "DISTRIBUIR_LUCROS",
                 "nome": "Distribuir Lucros",
-                "descricao": "Distribuir lucros aos sócios. Lançamento: D-Lucros Acum. / C-Caixa. Validação: verifica saldo em 'Lucros Acumulados'",
+                "descricao": "Distribuir lucros aos sócios. Lançamento: D-Lucros Acum. / C-Caixa Corrente. Validação: verifica saldo em 'Lucros Acumulados'",
                 "ativo": True,
-                "ordem": 7
+                "ordem": 16
             },
             {
                 "codigo": "PAGAR_DESPESA_FUNDO",
-                "nome": "Pagar Despesa via Fundo",
-                "descricao": "Registrar pagamento de despesas diversas. Lançamento: D-Outras Despesas / C-Caixa",
+                "nome": "Pagar Despesa Geral",
+                "descricao": "Registrar pagamento de despesas diversas. Lançamento: D-Despesa (escolher subconta) / C-Caixa Corrente",
                 "ativo": True,
-                "ordem": 8
+                "ordem": 17
             },
             {
-                "codigo": "BAIXAR_FUNDO",
-                "nome": "Baixa do Fundo",
-                "descricao": "Transferir recursos do fundo de reserva de volta para lucros. Lançamento: D-Reserva / C-Lucros Acum. Validação: verifica saldo em 'Reserva'",
+                "codigo": "RESGATAR_CDB_RESERVA",
+                "nome": "Resgatar CDB da Reserva Legal",
+                "descricao": "Resgatar aplicação CDB e reverter reserva legal. Lançamentos: 1) D-Caixa Corrente / C-Aplicação CDB; 2) D-Reserva (sócio) / C-Lucros Acum. Exige informar sócio.",
                 "ativo": True,
-                "ordem": 9
+                "ordem": 18
+            },
+            {
+                "codigo": "RECONHECER_RENDIMENTO_CDB",
+                "nome": "Reconhecer Rendimento de CDB",
+                "descricao": "Contabilizar juros/rendimentos ganhos nas aplicações CDB. Usuário escolhe qual CDB teve rendimento. Lançamento: D-CDB [específico] / C-Receitas Financeiras. Aumenta saldo do CDB e reconhece receita.",
+                "ativo": True,
+                "ordem": 19
+            },
+            {
+                "codigo": "APURAR_RESULTADO",
+                "nome": "Apurar Resultado do Período",
+                "descricao": "Transferir o lucro líquido da DRE para Lucros Acumulados. Executar ao final do mês. Lançamento: D-4.9.9 (conta técnica) / C-3.3 (Lucros Acumulados). Valor: lucro líquido apurado (informado manualmente).",
+                "ativo": True,
+                "ordem": 20
+            },
+            {
+                "codigo": "RECONHECER_RESERVA_LEGAL",
+                "nome": "Reconhecer Reserva Legal no PL",
+                "descricao": "Transferir lucros apurados para reserva legal do sócio. Lançamento: D-Lucros Acumulados / C-Reserva do Sócio (3.2.1.X). Executar após APURAR_RESULTADO para reconhecer no patrimônio líquido os valores aplicados em CDB de Reserva Legal durante o mês. Exige informar sócio.",
+                "ativo": True,
+                "ordem": 21
             }
         ]
         

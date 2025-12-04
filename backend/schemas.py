@@ -696,3 +696,85 @@ class DFCResponse(BaseModel):
     variacao_liquida: float
     saldo_final: float
     variacao_percentual: float
+
+
+# ==================== SCHEMAS FALTANDO - PAGAMENTOS ====================
+
+class PagamentoProLaboreCreate(BaseModel):
+    """Schema para registrar pagamento de pró-labore"""
+    valor: float
+    data_pagamento: date
+    observacao: Optional[str] = None
+    mes: int
+    ano: int
+
+class PagamentoINSSCreate(BaseModel):
+    """Schema para registrar pagamento de INSS"""
+    valor: float
+    data_pagamento: date
+    observacao: Optional[str] = None
+    mes: int
+    ano: int
+
+class PagamentoSimplesCreate(BaseModel):
+    """Schema para registrar pagamento de Simples Nacional"""
+    valor: float
+    data_pagamento: date
+    observacao: Optional[str] = None
+    mes: int
+    ano: int
+
+class PagamentoLucroSocioCreate(BaseModel):
+    """Schema para registrar saque de lucro de sócio"""
+    socio_id: int
+    valor: float
+    data_pagamento: date
+    observacao: Optional[str] = None
+    mes: int
+    ano: int
+
+class ConfirmarPagamento(BaseModel):
+    """Schema para confirmar pagamento de pendência"""
+    data_confirmacao: date
+
+class PagamentoPendente(BaseModel):
+    """Schema para representar pagamento pendente"""
+    id: int
+    tipo: str  # 'simples', 'inss', 'pro_labore', 'lucro'
+    valor: float
+    mes: int
+    ano: int
+    socio_id: Optional[int] = None
+    confirmado: bool = False
+    data_confirmacao: Optional[date] = None
+    
+    class Config:
+        from_attributes = True
+
+class SaldosDisponiveisMes(BaseModel):
+    """Schema para saldos disponíveis do mês"""
+    mes: int
+    ano: int
+    simples: dict
+    inss: dict
+    pro_labore: dict
+    lucros_por_socio: list
+
+class SaqueDeCapitalCreate(BaseModel):
+    """Schema para registrar saque de capital"""
+    socio_id: int
+    valor: float
+    data: date
+    observacao: Optional[str] = None
+
+class SaqueDeCapitalResponse(BaseModel):
+    """Schema para resposta de saque de capital"""
+    id: int
+    socio_id: int
+    valor: float
+    data: date
+    observacao: Optional[str] = None
+    criado_em: datetime
+    
+    class Config:
+        from_attributes = True

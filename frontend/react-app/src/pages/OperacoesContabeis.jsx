@@ -20,7 +20,8 @@ const OperacoesContabeis = () => {
         valor: '',
         data: new Date().toISOString().split('T')[0],
         descricao: '',
-        socio_id: ''
+        socio_id: '',
+        tipo_cdb: ''
     });
     
     // Operação expandida no histórico
@@ -112,7 +113,8 @@ const OperacoesContabeis = () => {
                 valor: '',
                 data: new Date().toISOString().split('T')[0],
                 descricao: '',
-                socio_id: ''
+                socio_id: '',
+                tipo_cdb: ''
             });
             
             // Recarregar histórico
@@ -122,7 +124,18 @@ const OperacoesContabeis = () => {
             setTimeout(() => setSucesso(''), 3000);
         } catch (error) {
             console.error('Erro ao executar operação:', error);
-            setErro(error.response?.data?.detail || error.message || 'Erro ao executar operação');
+            
+            // Extrair mensagem de erro detalhada do backend
+            let mensagemErro = 'Erro ao executar operação';
+            
+            if (error.response?.data?.detail) {
+                mensagemErro = error.response.data.detail;
+            } else if (error.message) {
+                mensagemErro = error.message;
+            }
+            
+            // Mensagens de erro já vêm formatadas do backend com emojis e quebras de linha
+            setErro(mensagemErro);
         } finally {
             setLoading(false);
         }
@@ -149,7 +162,9 @@ const OperacoesContabeis = () => {
     };
 
     const operacaoSelecionada = operacoes.find(op => op.codigo === formData.operacao_codigo);
-    const necessitaSocio = ['PRO_LABORE', 'DISTRIBUIR_LUCROS', 'INSS_PESSOAL', 'INSS_PATRONAL'].includes(formData.operacao_codigo);
+    const necessitaSocio = ['PRO_LABORE', 'DISTRIBUIR_LUCROS', 'INSS_PESSOAL', 'INSS_PATRONAL', 'APLICAR_RESERVA_CDB', 'RESGATAR_CDB_RESERVA', 'ADIANTAR_LUCROS', 'RECONHECER_RESERVA_LEGAL'].includes(formData.operacao_codigo);
+    const socioObrigatorio = ['APLICAR_RESERVA_CDB', 'RESGATAR_CDB_RESERVA', 'ADIANTAR_LUCROS', 'RECONHECER_RESERVA_LEGAL'].includes(formData.operacao_codigo);
+    const necessitaTipoCDB = ['RECONHECER_RENDIMENTO_CDB'].includes(formData.operacao_codigo);
 
     return (
         <div style={{ padding: '24px', maxWidth: '1400px', margin: '0 auto' }}>
@@ -163,12 +178,16 @@ const OperacoesContabeis = () => {
             {/* Mensagens */}
             {erro && (
                 <div style={{
-                    padding: '12px 16px',
+                    padding: '16px 20px',
                     backgroundColor: '#fee2e2',
                     border: '1px solid #fecaca',
                     borderRadius: '8px',
                     color: '#991b1b',
-                    marginBottom: '16px'
+                    marginBottom: '16px',
+                    whiteSpace: 'pre-line',
+                    fontFamily: 'monospace',
+                    fontSize: '13px',
+                    lineHeight: '1.6'
                 }}>
                     {erro}
                 </div>
@@ -290,7 +309,7 @@ const OperacoesContabeis = () => {
                         {necessitaSocio && (
                             <div>
                                 <label style={{ display: 'block', marginBottom: '6px', fontWeight: '500', color: '#374151' }}>
-                                    Sócio
+                                    Sócio {socioObrigatorio && <span style={{ color: '#dc2626' }}>*</span>}
                                 </label>
                                 <select
                                     value={formData.socio_id}
@@ -302,8 +321,11 @@ const OperacoesContabeis = () => {
                                         borderRadius: '6px',
                                         fontSize: '14px'
                                     }}
+                                    required={socioObrigatorio}
                                 >
-                                    <option value="">Selecione um sócio (opcional)</option>
+                                    <option value="">
+                                        {socioObrigatorio ? 'Selecione um sócio (obrigatório)' : 'Selecione um sócio (opcional)'}
+                                    </option>
                                     {socios.map(socio => (
                                         <option key={socio.id} value={socio.id}>
                                             {socio.nome}
@@ -312,28 +334,63 @@ const OperacoesContabeis = () => {
                                 </select>
                             </div>
                         )}
+
+                        {/* Tipo de CDB (condicional para RECONHECER_RENDIMENTO_CDB) */}
+                        {necessitaTipoCDB && (
+                            <div>
+                                <label style={{ display: 'block', marginBottom: '6px', fontWeight: '500', color: '#374151' }}>
+                                    Tipo de CDB <span style={{ color: '#dc2626' }}>*</span>
+                                </label>
+                                <select
+                                    value={formData.tipo_cdb || ''}
+                                    onChange={(e) => {
+                                        const tipo = e.target.value;
+                                        setFormData({ 
+                                            ...formData, 
+                                            tipo_cdb: tipo,
+                                            descricao: tipo ? `Tipo: ${tipo}` : ''
+                                        });
+                                    }}
+                                    style={{
+                                        width: '100%',
+                                        padding: '10px',
+                                        border: '1px solid #d1d5db',
+                                        borderRadius: '6px',
+                                        fontSize: '14px'
+                                    }}
+                                    required
+                                >
+                                    <option value="">Selecione o tipo de CDB</option>
+                                    <option value="OBRIGACOES_FISCAIS">CDB - Obrigações Fiscais</option>
+                                    <option value="RESERVA_LUCROS">CDB - Reserva de Lucros</option>
+                                    <option value="RESERVA_LEGAL">CDB - Reserva Legal</option>
+                                </select>
+                            </div>
+                        )}
                     </div>
 
                     {/* Descrição */}
-                    <div style={{ marginBottom: '20px' }}>
-                        <label style={{ display: 'block', marginBottom: '6px', fontWeight: '500', color: '#374151' }}>
-                            Descrição
-                        </label>
-                        <textarea
-                            value={formData.descricao}
-                            onChange={(e) => setFormData({ ...formData, descricao: e.target.value })}
-                            rows="3"
-                            style={{
-                                width: '100%',
-                                padding: '10px',
-                                border: '1px solid #d1d5db',
-                                borderRadius: '6px',
-                                fontSize: '14px',
-                                resize: 'vertical'
-                            }}
-                            placeholder="Descrição ou histórico da operação (opcional)"
-                        />
-                    </div>
+                    {!necessitaTipoCDB && (
+                        <div style={{ marginBottom: '20px' }}>
+                            <label style={{ display: 'block', marginBottom: '6px', fontWeight: '500', color: '#374151' }}>
+                                Descrição
+                            </label>
+                            <textarea
+                                value={formData.descricao}
+                                onChange={(e) => setFormData({ ...formData, descricao: e.target.value })}
+                                rows="3"
+                                style={{
+                                    width: '100%',
+                                    padding: '10px',
+                                    border: '1px solid #d1d5db',
+                                    borderRadius: '6px',
+                                    fontSize: '14px',
+                                    resize: 'vertical'
+                                }}
+                                placeholder="Descrição ou histórico da operação (opcional)"
+                            />
+                        </div>
+                    )}
 
                     <button
                         type="submit"

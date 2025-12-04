@@ -22,7 +22,7 @@ COPY . /app/
 # O backend não precisa mais do frontend buildado, o Nginx vai lidar com isso.
 
 EXPOSE 8000
-CMD ["uvicorn", "backend.main:app", "--host", "0.0.0.0", "--port", "8000"]
+CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000"]
 
 # 3) Nginx - Novo Estágio
 FROM nginx:alpine AS nginx-server

@@ -82,16 +82,16 @@ export default function Contabilidade() {
   }
 
   const navCards = [
-    { title: 'Operações Contábeis', path: '/contabilidade/operacoes', color: '#dbeafe', textColor: '#1e3a8a', icon: '⚙️' },
-    { title: 'Balanço Patrimonial', path: '/contabilidade/balanco', color: '#fef3c7', textColor: '#92400e', icon: '📊' },
-    { title: 'DMPL', path: '/contabilidade/dmpl', color: '#e0e7ff', textColor: '#3730a3', icon: '📈' },
-    { title: 'DFC', path: '/contabilidade/dfc', color: '#ddd6fe', textColor: '#5b21b6', icon: '💹' },
-    { title: 'Lucros & Dividendos', path: '/contabilidade/lucros', color: '#d1fae5', textColor: '#065f46', icon: '💰' },
-    { title: 'Pró-labore', path: '/contabilidade/pro-labore', color: '#fce7f3', textColor: '#831843', icon: '👤' },
-    { title: 'Entradas & Despesas', path: '/contabilidade/entradas-despesas', color: '#e5e7eb', textColor: '#1f2937', icon: '💵', description: 'Previsão de entradas e despesas. A edição e exclusão são feitas na lista.' },
-    { title: 'Plano de Contas', path: '/contabilidade/plano-contas', color: '#fed7aa', textColor: '#7c2d12', icon: '📋' },
-    { title: 'Sócios', path: '/contabilidade/socios', color: '#bfdbfe', textColor: '#1e40af', icon: '👥' },
-    { title: 'Config Simples', path: '/contabilidade/config-simples', color: '#c7d2fe', textColor: '#3730a3', icon: '⚙️' }
+    { title: 'Operações Contábeis', path: '/contabilidade/operacoes', color: '#dbeafe', textColor: '#1e3a8a', icon: '⚙️', description: 'Executar lançamentos padronizados (pró-labore, INSS, etc.) e visualizar o histórico de operações.' },
+    { title: 'Balanço Patrimonial', path: '/contabilidade/balanco', color: '#fef3c7', textColor: '#92400e', icon: '📊', description: 'Visualizar a posição financeira da empresa (Ativo, Passivo e Patrimônio Líquido).' },
+    { title: 'DMPL', path: '/contabilidade/dmpl', color: '#e0e7ff', textColor: '#3730a3', icon: '📈', description: 'Demonstração das Mutações do Patrimônio Líquido. Mostra a variação do PL ao longo do tempo.' },
+    { title: 'DFC', path: '/contabilidade/dfc', color: '#ddd6fe', textColor: '#5b21b6', icon: '💹', description: 'Demonstração dos Fluxos de Caixa. Mostra as entradas e saídas de caixa por atividade.' },
+    { title: 'Lucros & Dividendos', path: '/contabilidade/lucros', color: '#d1fae5', textColor: '#065f46', icon: '💰', description: 'Analisar o resultado do exercício e a distribuição de lucros.' },
+    { title: 'Pró-labore', path: '/contabilidade/pro-labore', color: '#fce7f3', textColor: '#831843', icon: '👤', description: 'Visualizar e gerenciar as retiradas dos sócios.' },
+    { title: 'Entradas & Despesas', path: '/contabilidade/entradas-despesas', color: '#e5e7eb', textColor: '#1f2937', icon: '💵', description: 'Gerenciar a previsão de receitas e despesas futuras para projeção de caixa.' },
+    { title: 'Plano de Contas', path: '/contabilidade/plano-contas', color: '#fed7aa', textColor: '#7c2d12', icon: '📋', description: 'Estrutura de contas usada para registrar todas as movimentações financeiras.' },
+    { title: 'Sócios', path: '/contabilidade/socios', color: '#bfdbfe', textColor: '#1e40af', icon: '👥', description: 'Gerenciar os sócios da empresa e seus dados.' },
+    { title: 'Config Simples', path: '/contabilidade/config-simples', color: '#c7d2fe', textColor: '#3730a3', icon: '⚙️', description: 'Configurar as faixas e alíquotas do Simples Nacional.' }
   ]
 
   return (

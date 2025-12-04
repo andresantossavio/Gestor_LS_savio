@@ -58,14 +58,14 @@ def seed_operacoes():
             {
                 "codigo": "INSS_PESSOAL",
                 "nome": "INSS Pessoal (sobre Pró-labore)",
-                "descricao": "Provisionar INSS retido do pró-labore (ex: 11%). Lançamento: D-Despesa Pró-labore / C-INSS a Recolher",
+                "descricao": "Provisionar INSS retido do pró-labore. Lançamento: D-Despesa Pró-labore / C-INSS a Recolher",
                 "ativo": True,
                 "ordem": 4
             },
             {
                 "codigo": "INSS_PATRONAL",
                 "nome": "INSS Patronal",
-                "descricao": "Provisionar INSS patronal (ex: 20% sobre pró-labore). Lançamento: D-Despesa INSS patronal / C-INSS a Recolher",
+                "descricao": "Provisionar INSS patronal sobre pró-labore. Lançamento: D-Despesa INSS patronal / C-INSS a Recolher",
                 "ativo": True,
                 "ordem": 5
             },

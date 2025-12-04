@@ -149,7 +149,7 @@ const OperacoesContabeis = () => {
     };
 
     const operacaoSelecionada = operacoes.find(op => op.codigo === formData.operacao_codigo);
-    const necessitaSocio = ['PRO_LABORE', 'DISTRIBUIR_LUCROS'].includes(formData.operacao_codigo);
+    const necessitaSocio = ['PRO_LABORE', 'DISTRIBUIR_LUCROS', 'INSS_PESSOAL', 'INSS_PATRONAL'].includes(formData.operacao_codigo);
 
     return (
         <div style={{ padding: '24px', maxWidth: '1400px', margin: '0 auto' }}>
@@ -227,18 +227,19 @@ const OperacoesContabeis = () => {
                             </select>
                             {operacaoSelecionada && (
                                 <div style={{
-                                    background: '#f3f4f6',
+                                    background: '#fefce8',
                                     borderRadius: '8px',
-                                    padding: '10px 14px',
+                                    padding: '12px 16px',
                                     marginTop: '8px',
-                                    marginBottom: '8px',
                                     fontSize: '13px',
-                                    color: '#374151',
-                                    borderLeft: '4px solid #FFC107',
-                                    boxShadow: '0 1px 2px rgba(0,0,0,0.04)'
+                                    color: '#713f12',
+                                    border: '1px solid #fde68a',
                                 }}>
-                                    <strong>O que esta operação faz?</strong><br />
-                                    {operacaoSelecionada.descricao}
+                                    <strong style={{ display: 'block', marginBottom: '4px', color: '#a16207' }}>O que esta operação faz?</strong>
+                                    <p style={{ margin: 0, padding: 0 }}>{operacaoSelecionada.descricao}</p>
+                                    <p style={{ margin: '8px 0 0 0', padding: '8px 0 0 0', borderTop: '1px dashed #fde68a', fontSize: '12px' }}>
+                                        <strong>Nota:</strong> O valor informado deve ser o valor final da operação (ex: o valor do INSS a ser provisionado), não um percentual.
+                                    </p>
                                 </div>
                             )}
                         </div>

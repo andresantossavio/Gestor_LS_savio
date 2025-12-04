@@ -587,7 +587,7 @@ def _executar_reservar_fundo(db: Session, op: models.OperacaoContabil, valor: fl
 
 
 def _executar_pro_labore(db: Session, op: models.OperacaoContabil, valor: float, data: date_type, historico: Optional[str], criado_por: Optional[int]):
-    """PRO_LABORE: D-Despesa PL / C-Caixa"""
+    """PRO_LABORE: D-Despesa Pró-Labore / C-Caixa"""
     conta_despesa_pl = _buscar_conta_por_codigo(db, "5.1.1")
     conta_caixa = _buscar_conta_por_codigo(db, "1.1.1")
     
@@ -611,7 +611,7 @@ def _executar_pro_labore(db: Session, op: models.OperacaoContabil, valor: float,
 
 
 def _executar_inss_pessoal(db: Session, op: models.OperacaoContabil, valor: float, data: date_type, historico: Optional[str], criado_por: Optional[int]):
-    """INSS_PESSOAL: D-Despesa PL / C-INSS a Recolher"""
+    """INSS_PESSOAL: D-Despesa Pró-Labore / C-INSS a Recolher"""
     conta_despesa_pl = _buscar_conta_por_codigo(db, "5.1.1")
     conta_inss = _buscar_conta_por_codigo(db, "2.1.5")
     

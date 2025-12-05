@@ -4,6 +4,8 @@ import Header from '../components/Header';
 import ProcessoForm from '../components/ProcessoForm'; // Importa o formulário
 import CalendarioProcesso from '../components/CalendarioProcesso';
 import TarefaForm from '../components/TarefaForm';
+import AndamentoForm from '../components/AndamentoForm';
+import TarefaDetalhesModal from '../components/TarefaDetalhesModal';
 
 const apiBase = '/api';
 
@@ -11,10 +13,13 @@ export default function ProcessoDetalhe() {
   const { processoId } = useParams(); // Pega o ID da URL
   const [processo, setProcesso] = useState(null);
   const [tarefas, setTarefas] = useState([]);
+  const [andamentos, setAndamentos] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [exibirForm, setExibirForm] = useState(false); // Estado para exibir o formulário
   const [exibirFormTarefa, setExibirFormTarefa] = useState(false); // Estado para exibir formulário de tarefa
+  const [exibirFormAndamento, setExibirFormAndamento] = useState(false); // Estado para exibir formulário de andamento
+  const [tarefaSelecionada, setTarefaSelecionada] = useState(null); // Estado para tarefa selecionada
 
   const fetchProcesso = useCallback(async () => {
     try {
@@ -47,10 +52,25 @@ export default function ProcessoDetalhe() {
     }
   }, [processoId]);
 
+  const fetchAndamentos = useCallback(async () => {
+    try {
+      const res = await fetch(`${apiBase}/andamentos/${processoId}`);
+      if (!res.ok) {
+        console.error('Erro ao buscar andamentos');
+        return;
+      }
+      const data = await res.json();
+      setAndamentos(data);
+    } catch (err) {
+      console.error('Erro ao buscar andamentos:', err);
+    }
+  }, [processoId]);
+
   useEffect(() => {
     fetchProcesso();
     fetchTarefas();
-  }, [fetchProcesso, fetchTarefas]);
+    fetchAndamentos();
+  }, [fetchProcesso, fetchTarefas, fetchAndamentos]);
 
   if (loading) return <div className="content">Carregando...</div>;
   if (error) return <div className="content">Erro: {error}</div>;
@@ -125,9 +145,32 @@ export default function ProcessoDetalhe() {
 
       {/* Seções para Andamentos, Tarefas, etc. */}
       <div className="card">
-        <h3>Andamentos</h3>
-        {/* Futuramente, listar os andamentos aqui */}
-        <p>Nenhum andamento registrado.</p>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '15px' }}>
+          <h3 style={{ margin: 0 }}>Andamentos Processuais</h3>
+          <button 
+            onClick={() => setExibirFormAndamento(true)}
+            className="btn btn-primary"
+          >
+            + Novo Andamento
+          </button>
+        </div>
+        {andamentos.length === 0 ? (
+          <p>Nenhum andamento registrado.</p>
+        ) : (
+          <ul>
+            {andamentos.map(andamento => (
+              <li key={andamento.id}>
+                <strong>{andamento.tipo_andamento?.nome || 'Andamento'}</strong>
+                {andamento.data && ` - ${new Date(andamento.data + 'T00:00:00').toLocaleDateString('pt-BR')}`}
+                {andamento.descricao_complementar && (
+                  <div style={{ marginLeft: '20px', color: '#666', fontSize: '0.9em' }}>
+                    {andamento.descricao_complementar}
+                  </div>
+                )}
+              </li>
+            ))}
+          </ul>
+        )}
       </div>
 
       <div className="card">
@@ -143,12 +186,45 @@ export default function ProcessoDetalhe() {
         {tarefas.length === 0 ? (
           <p>Nenhuma tarefa registrada.</p>
         ) : (
-          <ul>
+          <ul style={{ listStyle: 'none', padding: 0 }}>
             {tarefas.map(tarefa => (
-              <li key={tarefa.id}>
-                <strong>{tarefa.tipo_tarefa?.nome || 'Tarefa'}</strong> 
-                {tarefa.prazo_fatal && ` - Prazo: ${new Date(tarefa.prazo_fatal + 'T00:00:00').toLocaleDateString('pt-BR')}`}
-                {tarefa.status && ` - Status: ${tarefa.status}`}
+              <li 
+                key={tarefa.id}
+                onClick={() => setTarefaSelecionada(tarefa)}
+                style={{
+                  padding: '12px',
+                  marginBottom: '8px',
+                  borderRadius: '6px',
+                  border: '1px solid #e5e7eb',
+                  cursor: 'pointer',
+                  transition: 'all 0.2s',
+                  backgroundColor: '#fff'
+                }}
+                onMouseEnter={(e) => {
+                  e.currentTarget.style.backgroundColor = '#f3f4f6';
+                  e.currentTarget.style.borderColor = '#3b82f6';
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.backgroundColor = '#fff';
+                  e.currentTarget.style.borderColor = '#e5e7eb';
+                }}
+              >
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <div>
+                    <strong>{tarefa.tipo_tarefa?.nome || 'Tarefa'}</strong>
+                    {tarefa.prazo_fatal && ` - Prazo: ${new Date(tarefa.prazo_fatal + 'T00:00:00').toLocaleDateString('pt-BR')}`}
+                  </div>
+                  <span style={{
+                    padding: '4px 8px',
+                    borderRadius: '12px',
+                    fontSize: '11px',
+                    fontWeight: 600,
+                    backgroundColor: tarefa.status === 'Concluída' ? '#10b981' : tarefa.status === 'Em Andamento' ? '#f59e0b' : '#6b7280',
+                    color: 'white'
+                  }}>
+                    {tarefa.status || 'Pendente'}
+                  </span>
+                </div>
               </li>
             ))}
           </ul>
@@ -180,6 +256,31 @@ export default function ProcessoDetalhe() {
           onFormSubmit={() => {
             setExibirFormTarefa(false);
             fetchTarefas(); // Recarrega as tarefas
+          }}
+        />
+      )}
+
+      {/* Modal de Criar Andamento */}
+      {exibirFormAndamento && (
+        <AndamentoForm
+          processoId={processoId}
+          onClose={() => setExibirFormAndamento(false)}
+          onFormSubmit={() => {
+            setExibirFormAndamento(false);
+            fetchAndamentos(); // Recarrega os andamentos
+          }}
+        />
+      )}
+
+      {/* Modal de Detalhes da Tarefa */}
+      {tarefaSelecionada && (
+        <TarefaDetalhesModal
+          tarefa={tarefaSelecionada}
+          processoId={processoId}
+          onClose={() => setTarefaSelecionada(null)}
+          onAtualizar={() => {
+            fetchTarefas();
+            setTarefaSelecionada(null);
           }}
         />
       )}

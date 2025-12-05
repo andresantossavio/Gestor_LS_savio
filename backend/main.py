@@ -2108,6 +2108,59 @@ def listar_tarefas(db: Session = Depends(get_db)):
     return crud_tarefas.listar_tarefas_gerais(db)
 
 
+# NOTA: Rotas específicas devem vir ANTES de rotas com path parameters
+@api_router.get("/tarefas/filtros", response_model=List[schemas.TarefaResponse])
+def listar_tarefas_com_filtros(
+    tipo_tarefa_id: Optional[int] = None,
+    processo_id: Optional[int] = None,
+    cliente_id: Optional[int] = None,
+    classe: Optional[str] = None,
+    esfera_justica: Optional[str] = None,
+    municipio_id: Optional[int] = None,
+    uf: Optional[str] = None,
+    responsavel_id: Optional[int] = None,
+    status: Optional[str] = None,
+    prazo_vencido: bool = False,
+    data_inicio: Optional[date_type] = None,
+    data_fim: Optional[date_type] = None,
+    db: Session = Depends(get_db)
+):
+    """Lista tarefas com filtros avançados."""
+    return crud_tarefas.listar_tarefas_com_filtros(
+        db=db,
+        tipo_tarefa_id=tipo_tarefa_id,
+        processo_id=processo_id,
+        cliente_id=cliente_id,
+        classe=classe,
+        esfera_justica=esfera_justica,
+        municipio_id=municipio_id,
+        uf=uf,
+        responsavel_id=responsavel_id,
+        status=status,
+        prazo_vencido=prazo_vencido,
+        data_inicio=data_inicio,
+        data_fim=data_fim
+    )
+
+
+@api_router.get("/tarefas/estatisticas", response_model=schemas.EstatisticasTarefas)
+def obter_estatisticas_tarefas(db: Session = Depends(get_db)):
+    """Retorna estatísticas gerais de tarefas."""
+    return crud_tarefas.obter_estatisticas_tarefas(db)
+
+
+@api_router.get("/tarefas/metricas-responsavel", response_model=List[schemas.MetricasResponsavel])
+def obter_metricas_por_responsavel(db: Session = Depends(get_db)):
+    """Retorna métricas de desempenho por responsável."""
+    return crud_tarefas.obter_metricas_por_responsavel(db)
+
+
+@api_router.get("/tarefas/tempo-medio-tipo", response_model=List[schemas.TempoMedioPorTipo])
+def obter_tempo_medio_por_tipo(db: Session = Depends(get_db)):
+    """Retorna tempo médio de conclusão por tipo de tarefa."""
+    return crud_tarefas.obter_tempo_medio_por_tipo(db)
+
+
 @api_router.get("/tarefas/{tarefa_id}", response_model=schemas.Tarefa)
 def get_tarefa(tarefa_id: int, db: Session = Depends(get_db)):
     t = crud_tarefas.buscar_tarefa(tarefa_id, db)
@@ -2116,10 +2169,43 @@ def get_tarefa(tarefa_id: int, db: Session = Depends(get_db)):
     return t
 
 
+@api_router.get("/tarefas/{tarefa_id}/derivadas", response_model=List[schemas.TarefaResponse])
+def listar_tarefas_derivadas(tarefa_id: int, recursivo: bool = False, db: Session = Depends(get_db)):
+    """Lista tarefas derivadas de uma tarefa."""
+    return crud_tarefas.listar_tarefas_derivadas(tarefa_id, db, recursivo)
+
+
 @api_router.post("/tarefas", response_model=schemas.Tarefa)
 def criar_tarefa_api(t: schemas.TarefaCreate, db: Session = Depends(get_db)):
-    n = crud_tarefas.criar_tarefa(t.titulo, t.descricao, t.prazo, t.responsavel_id, t.processo_id, t.status, db)
-    return n
+    """Cria uma nova tarefa usando o schema TarefaCreate."""
+    # Valida se processo existe
+    if t.processo_id:
+        processo = crud_processos.buscar_processo(db, t.processo_id)
+        if not processo:
+            raise HTTPException(status_code=404, detail="Processo não encontrado")
+    
+    # Cria tarefa
+    nova_tarefa = crud_tarefas.criar_tarefa(
+        db=db,
+        processo_id=t.processo_id,
+        tipo_tarefa_id=t.tipo_tarefa_id,
+        descricao_complementar=t.descricao_complementar,
+        prazo=t.prazo_fatal,
+        responsavel_id=t.responsavel_id,
+        status=t.status
+    )
+    
+    # Atualiza prazos se fornecidos
+    if t.prazo_administrativo or t.prazo_fatal:
+        crud_tarefas.atualizar_tarefa(
+            nova_tarefa.id,
+            db,
+            prazo_administrativo=t.prazo_administrativo,
+            prazo_fatal=t.prazo_fatal
+        )
+    
+    db.refresh(nova_tarefa)
+    return nova_tarefa
 
 
 @api_router.put("/tarefas/{tarefa_id}", response_model=schemas.Tarefa)
@@ -2144,7 +2230,21 @@ def listar_andamentos_do_processo(processo_id: int, db: Session = Depends(get_db
 
 @api_router.post("/andamentos", response_model=schemas.Andamento)
 def criar_andamento_api(a: schemas.AndamentoCreate, db: Session = Depends(get_db)):
-    na = crud_andamentos.criar_andamento(a.processo_id, a.descricao, a.tipo, a.criado_por, a.data, db)
+    """Cria um novo andamento processual."""
+    # Valida se processo existe
+    processo = crud_processos.buscar_processo(db, a.processo_id)
+    if not processo:
+        raise HTTPException(status_code=404, detail="Processo não encontrado")
+    
+    # Cria andamento
+    na = crud_andamentos.criar_andamento(
+        db=db,
+        processo_id=a.processo_id,
+        tipo_andamento_id=a.tipo_andamento_id,
+        descricao_complementar=a.descricao_complementar,
+        data_andamento=a.data,
+        criado_por=a.criado_por
+    )
     return na
 
 
@@ -2568,68 +2668,6 @@ def avancar_workflow(
         return tarefa_atualizada
     except PermissionError as e:
         raise HTTPException(status_code=403, detail=str(e))
-
-
-@api_router.get("/tarefas/filtros", response_model=List[schemas.TarefaResponse])
-def listar_tarefas_com_filtros(
-    tipo_tarefa_id: Optional[int] = None,
-    processo_id: Optional[int] = None,
-    cliente_id: Optional[int] = None,
-    classe: Optional[str] = None,
-    esfera_justica: Optional[str] = None,
-    municipio_id: Optional[int] = None,
-    uf: Optional[str] = None,
-    responsavel_id: Optional[int] = None,
-    status: Optional[str] = None,
-    prazo_vencido: bool = False,
-    data_inicio: Optional[date_type] = None,
-    data_fim: Optional[date_type] = None,
-    db: Session = Depends(get_db)
-):
-    """Lista tarefas com filtros avançados."""
-    return crud_tarefas.listar_tarefas_com_filtros(
-        db=db,
-        tipo_tarefa_id=tipo_tarefa_id,
-        processo_id=processo_id,
-        cliente_id=cliente_id,
-        classe=classe,
-        esfera_justica=esfera_justica,
-        municipio_id=municipio_id,
-        uf=uf,
-        responsavel_id=responsavel_id,
-        status=status,
-        prazo_vencido=prazo_vencido,
-        data_inicio=data_inicio,
-        data_fim=data_fim
-    )
-
-
-@api_router.get("/tarefas/{tarefa_id}/derivadas", response_model=List[schemas.TarefaResponse])
-def listar_tarefas_derivadas(tarefa_id: int, recursivo: bool = False, db: Session = Depends(get_db)):
-    """Lista tarefas derivadas de uma tarefa."""
-    tarefa = crud_tarefas.buscar_tarefa(tarefa_id, db)
-    if not tarefa:
-        raise HTTPException(status_code=404, detail="Tarefa não encontrada")
-    
-    return crud_tarefas.listar_tarefas_derivadas(tarefa, db, recursivo)
-
-
-@api_router.get("/tarefas/estatisticas", response_model=schemas.EstatisticasTarefas)
-def obter_estatisticas_tarefas(db: Session = Depends(get_db)):
-    """Retorna estatísticas gerais sobre tarefas."""
-    return crud_tarefas.obter_estatisticas_tarefas(db)
-
-
-@api_router.get("/tarefas/metricas-responsavel", response_model=List[schemas.MetricasResponsavel])
-def obter_metricas_responsavel(db: Session = Depends(get_db)):
-    """Retorna métricas de tarefas por responsável."""
-    return crud_tarefas.obter_metricas_responsavel(db)
-
-
-@api_router.get("/tarefas/tempo-medio-tipo", response_model=List[schemas.TempoMedioPorTipo])
-def obter_tempo_medio_por_tipo(db: Session = Depends(get_db)):
-    """Retorna tempo médio de conclusão por tipo de tarefa."""
-    return crud_tarefas.obter_tempo_medio_por_tipo(db)
 
 
 # NOTE: Roteadores (api_router e config_router) serão registrados no main.py da raiz
